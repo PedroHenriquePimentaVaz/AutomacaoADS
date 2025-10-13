@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard BeHonest ADS</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <img src="{{ url_for('static', filename='images/behonest-logo.png') }}" alt="BeHonest Logo" class="logo-img">
+                    </div>
+                    <div class="logo-text">
+                        <h1>BeHonest ADS</h1>
+                        <p>Dashboard Analytics</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="uploadFile()">
+                        <i class="fas fa-upload"></i>
+                        Upload Planilha
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Upload Section -->
+            <section class="upload-section" id="uploadSection">
+                <div class="upload-card">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h2>Analise seus Dados de Campanhas</h2>
+                    <p>Faça upload da sua planilha de controle ADS para visualizar insights detalhados</p>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;">
+                        <div class="upload-content">
+                            <i class="fas fa-file-excel"></i>
+                            <p>Arraste e solte sua planilha aqui</p>
+                            <p class="upload-subtitle">ou clique para selecionar</p>
+                        </div>
+                    </div>
+                    
+                    <div class="upload-info">
+                        <p><i class="fas fa-check"></i> Formatos suportados: Excel (.xlsx, .xls) e CSV</p>
+                        <p><i class="fas fa-check"></i> Detecção automática de colunas</p>
+                        <p><i class="fas fa-check"></i> Análise completa de performance</p>
+                    </div>
+                    
+                    <div class="auto-upload-section">
+                        <button class="btn btn-secondary" id="autoUploadBtn">
+                            <i class="fas fa-download"></i> Carregar do Google Drive
+                        </button>
+                        <p class="auto-upload-info">Carregue automaticamente a planilha do Google Drive</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading Section -->
+            <section class="loading-section" id="loadingSection" style="display: none;">
+                <div class="loading-card">
+                    <div class="loading-spinner"></div>
+                    <h3>Processando dados...</h3>
+                    <p>Analisando sua planilha e gerando insights</p>
+                </div>
+            </section>
+
+            <!-- Dashboard Section -->
+            <section class="dashboard-section" id="dashboardSection" style="display: none;">
+                <!-- Filters Section -->
+                <div class="filters-card">
+                    <div class="filters-header">
+                        <h3><i class="fas fa-filter"></i> Filtros de Análise</h3>
+                        <button class="btn btn-sm btn-outline" onclick="resetFilters()">
+                            <i class="fas fa-undo"></i>
+                            Limpar Filtros
+                        </button>
+                    </div>
+                    <div class="filters-content">
+                        <div class="filter-group">
+                            <label for="dateFilter">Período:</label>
+                            <select id="dateFilter" class="filter-select">
+                                <option value="all">Todas as datas</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="analysisType">Tipo de Análise:</label>
+                            <select id="analysisType" class="filter-select">
+                                <option value="overview">Visão Geral</option>
+                                <option value="temporal">Análise Temporal</option>
+                                <option value="financial">Análise Financeira</option>
+                                <option value="creatives">Análise de Criativos</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPIs Cards -->
+                <div class="kpis-grid" id="kpisGrid">
+                    <!-- KPIs serão inseridos aqui dinamicamente -->
+                </div>
+
+                <!-- Analysis Sections -->
+                <div class="analysis-sections">
+                    <!-- Overview Section -->
+                    <div class="analysis-section" id="overviewSection">
+                        <div class="section-header">
+                            <h2><i class="fas fa-chart-pie"></i> Visão Geral</h2>
+                        </div>
+                        <div class="charts-section">
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Evolução dos Criativos</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('temporal')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="temporalChart"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Distribuição por Data</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('distribution')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="distributionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Temporal Section -->
+                    <div class="analysis-section" id="temporalSection" style="display: none;">
+                        <div class="section-header">
+                            <h2><i class="fas fa-calendar-alt"></i> Análise Temporal</h2>
+                        </div>
+                        <div class="temporal-metrics">
+                            <div class="metric-row">
+                                <div class="metric-item">
+                                    <span class="metric-label">Período Analisado:</span>
+                                    <span class="metric-value" id="periodDays">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Média Criativos/Dia:</span>
+                                    <span class="metric-value" id="avgCreatives">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Dia com Mais Criativos:</span>
+                                    <span class="metric-value" id="peakDay">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="charts-section">
+                            <div class="chart-card full-width">
+                                <div class="chart-header">
+                                    <h3>Evolução Temporal Detalhada</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('temporal-detailed')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="temporalDetailedChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Financial Section -->
+                    <div class="analysis-section" id="financialSection" style="display: none;">
+                        <div class="section-header">
+                            <h2><i class="fas fa-dollar-sign"></i> Análise Financeira</h2>
+                        </div>
+                        <div class="financial-metrics">
+                            <div class="metric-row">
+                                <div class="metric-item">
+                                    <span class="metric-label">ROI Médio:</span>
+                                    <span class="metric-value" id="avgROI">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">CPL Médio:</span>
+                                    <span class="metric-value" id="avgCPL">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">CPMQL Médio:</span>
+                                    <span class="metric-value" id="avgCPMQL">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Custo por MQL:</span>
+                                    <span class="metric-value" id="custoPorMQL">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="charts-section">
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Custos por Período</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('costs')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="costsChart"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Eficiência de Conversão</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('conversion')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="conversionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Creatives Section -->
+                    <div class="analysis-section" id="creativesSection" style="display: none;">
+                        <div class="section-header">
+                            <h2><i class="fas fa-paint-brush"></i> Análise de Criativos</h2>
+                        </div>
+                        <div class="creatives-metrics">
+                            <div class="metric-row">
+                                <div class="metric-item">
+                                    <span class="metric-label">Total de Criativos:</span>
+                                    <span class="metric-value" id="totalCreatives">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Criativo Top Leads:</span>
+                                    <span class="metric-value" id="topLeadCreative">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Criativo Top MQLs:</span>
+                                    <span class="metric-value" id="topMQLCreative">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Performance Média:</span>
+                                    <span class="metric-value" id="avgPerformance">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Análise Detalhada dos Top Criativos -->
+                        <div class="detailed-analysis">
+                            <div class="best-creatives-header">
+                                <h3><i class="fas fa-star"></i> Os Melhores Criativos</h3>
+                                <p>Análise detalhada dos criativos com melhor performance</p>
+                            </div>
+                            
+                            <div class="analysis-cards">
+                                <div class="analysis-card top-lead-card winner-card">
+                                    <div class="card-header">
+                                        <div class="winner-badge">
+                                            <i class="fas fa-crown"></i>
+                                            <span>CAMPEÃO DE LEADS</span>
+                                        </div>
+                                        <h4><i class="fas fa-trophy"></i> Top Criativo por Leads</h4>
+                                    </div>
+                                    <div class="card-content">
+                                        <div class="creative-name winner-name" id="topLeadCreativeName">-</div>
+                                        <div class="performance-summary">
+                                            <div class="main-metric">
+                                                <span class="metric-number" id="topLeadCreativeLeads">-</span>
+                                                <span class="metric-label">Total de Leads</span>
+                                            </div>
+                                        </div>
+                                        <div class="creative-stats">
+                                            <div class="stat-item">
+                                                <span class="stat-label">Total MQLs:</span>
+                                                <span class="stat-value" id="topLeadCreativeMQLs">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">Aparições:</span>
+                                                <span class="stat-value" id="topLeadCreativeAppearances">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">Leads/Aparação:</span>
+                                                <span class="stat-value" id="topLeadCreativeLeadsPerApp">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">Taxa Conversão:</span>
+                                                <span class="stat-value" id="topLeadCreativeConversion">-</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="analysis-card top-mql-card winner-card">
+                                    <div class="card-header">
+                                        <div class="winner-badge">
+                                            <i class="fas fa-crown"></i>
+                                            <span>CAMPEÃO DE MQLs</span>
+                                        </div>
+                                        <h4><i class="fas fa-medal"></i> Top Criativo por MQLs</h4>
+                                    </div>
+                                    <div class="card-content">
+                                        <div class="creative-name winner-name" id="topMQLCreativeName">-</div>
+                                        <div class="performance-summary">
+                                            <div class="main-metric">
+                                                <span class="metric-number" id="topMQLCreativeMQLs">-</span>
+                                                <span class="metric-label">Total de MQLs</span>
+                                            </div>
+                                        </div>
+                                        <div class="creative-stats">
+                                            <div class="stat-item">
+                                                <span class="stat-label">Total Leads:</span>
+                                                <span class="stat-value" id="topMQLCreativeLeads">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">Aparições:</span>
+                                                <span class="stat-value" id="topMQLCreativeAppearances">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">MQLs/Aparação:</span>
+                                                <span class="stat-value" id="topMQLCreativeMQLsPerApp">-</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">Taxa Conversão:</span>
+                                                <span class="stat-value" id="topMQLCreativeConversion">-</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Ranking dos Top 5 Criativos -->
+                            <div class="top-creatives-ranking">
+                                <h4><i class="fas fa-chart-bar"></i> Ranking dos Top 5 Criativos</h4>
+                                <div class="ranking-list" id="topCreativesRanking">
+                                    <!-- Será preenchido pelo JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="charts-section">
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Top 10 Criativos por Performance</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('creatives')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="creativesChart"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <h3>Performance por Campanha</h3>
+                                    <div class="chart-actions">
+                                        <button class="btn btn-sm btn-outline" onclick="exportChart('campaigns')">
+                                            <i class="fas fa-download"></i>
+                                            Exportar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="chart-content">
+                                    <canvas id="campaignsChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tabela Detalhada de Criativos -->
+                        <div class="creatives-table-section">
+                            <div class="table-header">
+                                <h3><i class="fas fa-table"></i> Performance Detalhada por Criativo</h3>
+                                <div class="table-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportCreativesTable()">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table id="creativesTable" class="creatives-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Criativo</th>
+                                            <th>Total Leads</th>
+                                            <th>Total MQLs</th>
+                                            <th>Aparições</th>
+                                            <th>Leads/Aparação</th>
+                                            <th>MQLs/Aparação</th>
+                                            <th>Taxa Conversão (%)</th>
+                                            <th>Investimento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="creativesTableBody">
+                                        <tr><td colspan="8">Carregando dados...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Dados Detalhados</h3>
+                        <div class="table-actions">
+                            <input type="text" id="searchInput" placeholder="Buscar..." class="search-input">
+                            <select id="rowsSelect" class="rows-select">
+                                <option value="50">50 linhas</option>
+                                <option value="100">100 linhas</option>
+                                <option value="200">200 linhas</option>
+                                <option value="all">Todas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="dataTable">
+                            <thead id="tableHead">
+                                <!-- Headers serão inseridos dinamicamente -->
+                            </thead>
+                            <tbody id="tableBody">
+                                <!-- Dados serão inseridos dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

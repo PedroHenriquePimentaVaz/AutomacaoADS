@@ -1,0 +1,11 @@
+.env
+*.pem
+*.key
+*.p12
+*service-account*.json
+*credentials*.json
+node_modules/
+__pycache__/
+.vscode/
+.DS_Store
+*.log
