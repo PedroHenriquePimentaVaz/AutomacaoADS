@@ -1,11 +1,13 @@
-.env
+
 *.pem
 *.key
 *.p12
 *service-account*.json
 *credentials*.json
-node_modules/
+.env
+.venv/
 __pycache__/
-.vscode/
+node_modules/
 .DS_Store
+.vscode/
 *.log
