@@ -16,10 +16,17 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 def load_drive_credentials():
     """Carrega credenciais do Google Drive"""
     try:
-        credentials_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'sixth-now-475017-k8-785034518ab7.json')
+        credentials_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
+        # Se não estiver definido, tentar caminho relativo
+        if not credentials_file:
+            credentials_file = 'sixth-now-475017-k8-785034518ab7.json'
+        
+        # Verifica se o arquivo existe
         if not os.path.exists(credentials_file):
             print(f"Arquivo de credenciais não encontrado: {credentials_file}")
+            print(f"Diretório atual: {os.getcwd()}")
+            print(f"Conteúdo do diretório: {os.listdir('.')}")
             return None
         
         credentials = service_account.Credentials.from_service_account_file(
@@ -30,6 +37,8 @@ def load_drive_credentials():
         return credentials
     except Exception as e:
         print(f"Erro ao carregar credenciais: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def download_file_from_drive(file_id, credentials):
@@ -439,6 +448,10 @@ def upload_file():
                 creative_stats['MQLs_por_Aparicao'] = (creative_stats['Total_MQLs'] / creative_stats['Qtd_Aparicoes']).round(2)
                 creative_stats['Taxa_Conversao_Lead_MQL'] = (creative_stats['Total_MQLs'] / creative_stats['Total_Leads'] * 100).round(2)
                 
+                # Calcula custos por criativo
+                creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
+                creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
+                
                 # Substitui inf e NaN por 0
                 creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
                 
@@ -474,19 +487,25 @@ def upload_file():
                         'name': str(top_lead_creative['creative']) if top_lead_creative is not None else 'N/A',
                         'leads': int(top_lead_creative['Total_Leads']) if top_lead_creative is not None else 0,
                         'mqls': int(top_lead_creative['Total_MQLs']) if top_lead_creative is not None else 0,
+                        'investimento': float(top_lead_creative['Total_Investimento']) if top_lead_creative is not None else 0,
                         'appearances': int(top_lead_creative['Qtd_Aparicoes']) if top_lead_creative is not None else 0,
                         'leads_per_appearance': float(top_lead_creative['Leads_por_Aparicao']) if top_lead_creative is not None else 0,
                         'mqls_per_appearance': float(top_lead_creative['MQLs_por_Aparicao']) if top_lead_creative is not None else 0,
-                        'conversion_rate': float(top_lead_creative['Taxa_Conversao_Lead_MQL']) if top_lead_creative is not None else 0
+                        'conversion_rate': float(top_lead_creative['Taxa_Conversao_Lead_MQL']) if top_lead_creative is not None else 0,
+                        'cpl': float(top_lead_creative['CPL']) if top_lead_creative is not None else 0,
+                        'cpmql': float(top_lead_creative['CPMQL']) if top_lead_creative is not None else 0
                     } if top_lead_creative is not None else None,
                     'top_mql_creative': {
                         'name': str(top_mql_creative['creative']) if top_mql_creative is not None else 'N/A',
                         'leads': int(top_mql_creative['Total_Leads']) if top_mql_creative is not None else 0,
                         'mqls': int(top_mql_creative['Total_MQLs']) if top_mql_creative is not None else 0,
+                        'investimento': float(top_mql_creative['Total_Investimento']) if top_mql_creative is not None else 0,
                         'appearances': int(top_mql_creative['Qtd_Aparicoes']) if top_mql_creative is not None else 0,
                         'leads_per_appearance': float(top_mql_creative['Leads_por_Aparicao']) if top_mql_creative is not None else 0,
                         'mqls_per_appearance': float(top_mql_creative['MQLs_por_Aparicao']) if top_mql_creative is not None else 0,
-                        'conversion_rate': float(top_mql_creative['Taxa_Conversao_Lead_MQL']) if top_mql_creative is not None else 0
+                        'conversion_rate': float(top_mql_creative['Taxa_Conversao_Lead_MQL']) if top_mql_creative is not None else 0,
+                        'cpl': float(top_mql_creative['CPL']) if top_mql_creative is not None else 0,
+                        'cpmql': float(top_mql_creative['CPMQL']) if top_mql_creative is not None else 0
                     } if top_mql_creative is not None else None,
                     'total_creatives': len(creative_stats),
                     'avg_leads_per_creative': float(creative_stats['Total_Leads'].mean()) if len(creative_stats) > 0 else 0,
@@ -663,6 +682,10 @@ def auto_upload():
                     creative_stats['MQLs_por_Aparicao'] = (creative_stats['Total_MQLs'] / creative_stats['Qtd_Aparicoes']).round(2)
                     creative_stats['Taxa_Conversao_Lead_MQL'] = (creative_stats['Total_MQLs'] / creative_stats['Total_Leads'] * 100).round(2)
                     
+                    # Calcula custos por criativo
+                    creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
+                    creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
+                    
                     # Substitui inf e NaN por 0
                     creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
                     
@@ -698,19 +721,25 @@ def auto_upload():
                             'name': str(top_lead_creative['creative']) if top_lead_creative is not None else 'N/A',
                             'leads': int(top_lead_creative['Total_Leads']) if top_lead_creative is not None else 0,
                             'mqls': int(top_lead_creative['Total_MQLs']) if top_lead_creative is not None else 0,
+                            'investimento': float(top_lead_creative['Total_Investimento']) if top_lead_creative is not None else 0,
                             'appearances': int(top_lead_creative['Qtd_Aparicoes']) if top_lead_creative is not None else 0,
                             'leads_per_appearance': float(top_lead_creative['Leads_por_Aparicao']) if top_lead_creative is not None else 0,
                             'mqls_per_appearance': float(top_lead_creative['MQLs_por_Aparicao']) if top_lead_creative is not None else 0,
-                            'conversion_rate': float(top_lead_creative['Taxa_Conversao_Lead_MQL']) if top_lead_creative is not None else 0
+                            'conversion_rate': float(top_lead_creative['Taxa_Conversao_Lead_MQL']) if top_lead_creative is not None else 0,
+                            'cpl': float(top_lead_creative['CPL']) if top_lead_creative is not None else 0,
+                            'cpmql': float(top_lead_creative['CPMQL']) if top_lead_creative is not None else 0
                         } if top_lead_creative is not None else None,
                         'top_mql_creative': {
                             'name': str(top_mql_creative['creative']) if top_mql_creative is not None else 'N/A',
                             'leads': int(top_mql_creative['Total_Leads']) if top_mql_creative is not None else 0,
                             'mqls': int(top_mql_creative['Total_MQLs']) if top_mql_creative is not None else 0,
+                            'investimento': float(top_mql_creative['Total_Investimento']) if top_mql_creative is not None else 0,
                             'appearances': int(top_mql_creative['Qtd_Aparicoes']) if top_mql_creative is not None else 0,
                             'leads_per_appearance': float(top_mql_creative['Leads_por_Aparicao']) if top_mql_creative is not None else 0,
                             'mqls_per_appearance': float(top_mql_creative['MQLs_por_Aparicao']) if top_mql_creative is not None else 0,
-                            'conversion_rate': float(top_mql_creative['Taxa_Conversao_Lead_MQL']) if top_mql_creative is not None else 0
+                            'conversion_rate': float(top_mql_creative['Taxa_Conversao_Lead_MQL']) if top_mql_creative is not None else 0,
+                            'cpl': float(top_mql_creative['CPL']) if top_mql_creative is not None else 0,
+                            'cpmql': float(top_mql_creative['CPMQL']) if top_mql_creative is not None else 0
                         } if top_mql_creative is not None else None,
                         'total_creatives': len(creative_stats),
                         'avg_leads_per_creative': float(creative_stats['Total_Leads'].mean()) if len(creative_stats) > 0 else 0,

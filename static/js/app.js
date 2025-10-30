@@ -614,12 +614,87 @@ function renderOverviewCharts() {
         temporalChart.data.labels = temporalData.map(item => item.Data);
         temporalChart.data.datasets[0].data = temporalData.map(item => item.Criativos);
         temporalChart.update();
-        
-        // Update distribution chart
-        distributionChart.data.labels = temporalData.map(item => item.Data);
-        distributionChart.data.datasets[0].data = temporalData.map(item => item.Criativos);
-        distributionChart.update();
     }
+    
+    // Update distribution chart with leads data
+    renderLeadsDistributionChart();
+}
+
+function renderLeadsDistributionChart() {
+    if (!filteredData || !filteredData.raw_data) return;
+    
+    // Get date and leads columns
+    const dateCol = filteredData.date_column;
+    const leadsCol = filteredData.leads_columns?.lead;
+    
+    if (!dateCol || !leadsCol || !filteredData.raw_data.length) return;
+    
+    // Helper function to format date to DD/MM/YYYY
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        
+        // If already in DD/MM/YYYY format, return as is
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            return dateStr;
+        }
+        
+        // If in YYYY-MM-DD format (with or without time)
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+            const parts = dateStr.split(' ')[0].split('-'); // Remove time if present
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            return `${day}/${month}/${year}`;
+        }
+        
+        // Try to parse and format
+        try {
+            const date = new Date(dateStr);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch (e) {
+            return dateStr;
+        }
+    }
+    
+    // Group leads by date
+    const leadsByDate = {};
+    filteredData.raw_data.forEach(row => {
+        let date = row[dateCol] || row['Data_Processada'];
+        if (!date) return;
+        
+        // Format date to DD/MM/YYYY
+        date = formatDate(date);
+        
+        const leads = parseFloat(row[leadsCol] || row['LEAD'] || 0);
+        if (leadsByDate[date]) {
+            leadsByDate[date] += leads;
+        } else {
+            leadsByDate[date] = leads;
+        }
+    });
+    
+    // Convert to array and sort by date (convert to comparable format for sorting)
+    const dates = Object.keys(leadsByDate).sort((a, b) => {
+        const [dayA, monthA, yearA] = a.split('/').map(Number);
+        const [dayB, monthB, yearB] = b.split('/').map(Number);
+        const dateA = new Date(yearA, monthA - 1, dayA);
+        const dateB = new Date(yearB, monthB - 1, dayB);
+        return dateA - dateB;
+    });
+    
+    // Format dates for display
+    const labels = dates;
+    const values = dates.map(date => leadsByDate[date] || 0);
+    
+    // Update distribution chart
+    distributionChart.data.labels = labels;
+    distributionChart.data.datasets[0].data = values;
+    distributionChart.data.datasets[0].backgroundColor = 'rgba(0, 51, 102, 0.8)'; // Navy blue
+    distributionChart.data.datasets[0].borderColor = '#003366';
+    distributionChart.update();
 }
 
 function renderTemporalCharts() {
@@ -671,10 +746,90 @@ function renderFinancialCharts() {
         } else {
             document.getElementById('custoPorMQL').textContent = 'N/A';
         }
-        
-        // Simple ROI calculation (placeholder)
-        document.getElementById('avgROI').textContent = 'N/A';
     }
+    
+    // Render costs chart with last week data
+    renderCostsChart();
+}
+
+function renderCostsChart() {
+    if (!filteredData || !filteredData.raw_data) return;
+    
+    // Get date and investment columns
+    const dateCol = filteredData.date_column;
+    const costCol = 'Investimento';
+    
+    if (!dateCol || !filteredData.raw_data.length) return;
+    
+    // Helper function to format date to DD/MM/YYYY
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        
+        // If already in DD/MM/YYYY format, return as is
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            return dateStr;
+        }
+        
+        // If in YYYY-MM-DD format (with or without time)
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+            const parts = dateStr.split(' ')[0].split('-'); // Remove time if present
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            return `${day}/${month}/${year}`;
+        }
+        
+        // Try to parse and format
+        try {
+            const date = new Date(dateStr);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch (e) {
+            return dateStr;
+        }
+    }
+    
+    // Group investment by date
+    const investmentByDate = {};
+    filteredData.raw_data.forEach(row => {
+        let date = row[dateCol] || row['Data_Processada'];
+        if (!date) return;
+        
+        // Format date to DD/MM/YYYY
+        date = formatDate(date);
+        
+        const investimento = parseFloat(row[costCol] || row['Investimento'] || 0);
+        if (investmentByDate[date]) {
+            investmentByDate[date] += investimento;
+        } else {
+            investmentByDate[date] = investimento;
+        }
+    });
+    
+    // Convert to array and sort by date (convert to comparable format for sorting)
+    const dates = Object.keys(investmentByDate).sort((a, b) => {
+        const [dayA, monthA, yearA] = a.split('/').map(Number);
+        const [dayB, monthB, yearB] = b.split('/').map(Number);
+        const dateA = new Date(yearA, monthA - 1, dayA);
+        const dateB = new Date(yearB, monthB - 1, dayB);
+        return dateA - dateB;
+    });
+    
+    // Get last 7 days
+    const last7Days = dates.slice(-7);
+    
+    // Format dates for display
+    const labels = last7Days;
+    const values = last7Days.map(date => investmentByDate[date] || 0);
+    
+    // Update costs chart
+    costsChart.data.labels = labels;
+    costsChart.data.datasets[0].data = values;
+    costsChart.data.datasets[0].backgroundColor = 'rgba(237, 177, 37, 0.8)'; // Mustard color
+    costsChart.data.datasets[0].borderColor = '#edb125';
+    costsChart.update();
 }
 
 function renderCreativesCharts() {
