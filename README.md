@@ -43,20 +43,23 @@ Crie um arquivo `.env` na raiz do projeto:
 
 ```env
 DRIVE_FILE_ID=seu_file_id_do_google_drive
+GOOGLE_ADS_FILE_ID=1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY
 GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 ```
 
 ### Credenciais do Google Drive
 
 1. Coloque o arquivo `sixth-now-475017-k8-785034518ab7.json` na raiz do projeto
-2. Certifique-se de que o service account tem acesso ao arquivo no Google Drive
+2. Certifique-se de que o service account tem acesso aos arquivos no Google Drive
 
 ## 📊 Funcionalidades
 
 ### Análise Automática
+- Carregamento de múltiplas planilhas (ADS Geral e Google Ads)
 - Upload inteligente de planilhas
 - Detecção automática de colunas
 - Cálculo de KPIs em tempo real
+- Processamento inteligente de dados mistos (texto e números)
 
 ### Métricas Calculadas
 - Total de Leads e MQLs
@@ -69,8 +72,9 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 
 ### Visualizações
 - Gráficos interativos (Chart.js)
-- Investimento diário da última semana
+- Investimento diário da última semana (formato DD/MM/YYYY)
 - Evolução temporal de criativos
+- Distribuição de leads por data
 - Performance de conversão
 - Tabelas detalhadas
 - Cards de destaque
@@ -80,6 +84,8 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 - Download automático de planilhas
 - Atualização em tempo real
 - Exportação inteligente de Google Sheets
+- Suporte para múltiplas planilhas
+- Leitura de abas específicas (ex: "Controle Google ADS")
 
 ## 🎨 Design System
 
@@ -166,12 +172,16 @@ O dashboard está totalmente containerizado para facilitar o deploy e manter con
 
 ### Funcionalidades no Docker
 
-✓ Upload manual de planilhas Excel/CSV  
-✓ Carregamento automático do Google Drive  
+✓ Carregamento automático de múltiplas planilhas do Google Drive  
+✓ Separação entre ADS Geral e Google Ads  
+✓ Processamento inteligente de dados (texto e números)  
 ✓ Cálculo automático de CPL e CPMQL  
 ✓ Análise detalhada de criativos  
 ✓ Visualizações interativas (Chart.js)  
-✓ Design responsivo com identidade BeHonest
+✓ Formatos de data brasileiros (DD/MM/YYYY)  
+✓ Design responsivo com identidade BeHonest  
+✓ Botão de voltar ao início  
+✓ Leitura de abas específicas do Google Sheets
 
 ## 📖 Documentação
 
@@ -183,8 +193,11 @@ O dashboard está totalmente containerizado para facilitar o deploy e manter con
 ### Erro de credenciais do Google Drive
 Verifique se o arquivo JSON existe e está no diretório correto.
 
-### Erro ao fazer upload
-Verifique o formato da planilha e se as colunas necessárias existem.
+### Erro ao processar arquivo
+O sistema foi configurado para detectar automaticamente se uma coluna é texto ou número. Se ainda ocorrer erro:
+- Verifique se a planilha não tem células mescladas
+- Certifique-se de que as colunas estão formatadas corretamente
+- Verifique os logs com `docker compose logs -f`
 
 ### Docker não inicia
 ```bash
@@ -192,6 +205,11 @@ docker compose down -v
 docker compose build --no-cache
 docker compose up
 ```
+
+### Erro ao carregar Google Ads
+- Verifique se o ID da planilha no `.env` está correto
+- Certifique-se de que a aba "Controle Google ADS" existe
+- Verifique os logs para detalhes específicos
 
 ## 📝 Licença
 

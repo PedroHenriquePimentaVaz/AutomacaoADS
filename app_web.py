@@ -121,16 +121,18 @@ def fill_empty_fields_with_zero(df):
         if len(non_null_values) > 0:
             try:
                 # Tenta converter valores não-nulos para numérico
-                numeric_values = pd.to_numeric(non_null_values, errors='coerce')
+                # Usa astype('str') primeiro para garantir que é string, não objeto concatenado
+                numeric_values = pd.to_numeric(non_null_values.astype('str'), errors='coerce')
                 # Se mais de 50% dos valores não-nulos são numéricos, trata como numérica
                 if len(numeric_values.dropna()) / len(non_null_values) > 0.5:
                     # Converte toda a coluna para numérica e preenche NaN com 0
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    df[col] = pd.to_numeric(df[col].astype('str'), errors='coerce').fillna(0)
                 else:
                     # Preenche com string vazia
                     df[col] = df[col].fillna('')
-            except:
+            except Exception as e:
                 # Se houver erro, preenche com string vazia
+                print(f"Erro ao processar coluna {col}: {e}")
                 df[col] = df[col].fillna('')
         else:
             # Se todos os valores são NaN, preenche com string vazia
@@ -157,7 +159,10 @@ def fill_lead_mql_columns(df, leads_cols):
     # Preenche outras colunas que podem ter valores numéricos vazios
     for col in df.columns:
         # Se o nome da coluna sugere que é numérico (CPL, CPMQL, etc.)
-        if any(keyword in col.upper() for keyword in ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL']):
+        # Mas só converte se não for uma das colunas de leads/mqls já processadas
+        col_upper = col.upper()
+        if (any(keyword in col_upper for keyword in ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR']) and 
+            col != lead_col and col != mql_col):
             # Tenta converter para numérico e preenche NaN com 0
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
@@ -780,6 +785,253 @@ def auto_upload():
     except Exception as e:
         print(f"Erro no upload automático: {str(e)}")
         return jsonify({'error': f'Erro no upload automático: {str(e)}'}), 500
+
+@app.route('/google-ads-upload')
+def google_ads_upload():
+    """Rota para upload automático da planilha do Google Ads"""
+    try:
+        # Carrega variáveis de ambiente
+        file_id = os.getenv('GOOGLE_ADS_FILE_ID', '1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY')
+        
+        # Carrega credenciais
+        credentials = load_drive_credentials()
+        if not credentials:
+            return jsonify({'error': 'Credenciais do Google Drive não encontradas'}), 500
+        
+        # Baixa arquivo do Google Drive
+        file_content, file_name = download_file_from_drive(file_id, credentials)
+        if not file_content:
+            return jsonify({'error': 'Erro ao baixar arquivo do Google Drive'}), 500
+        
+        # Simula upload do arquivo
+        print(f"Upload automático do Google Ads recebido: {file_name}")
+        
+        # Processa o arquivo como se fosse um upload normal
+        try:
+            # Tenta ler a aba específica "Controle Google ADS", se não encontrar, lê a primeira
+            try:
+                df = pd.read_excel(io.BytesIO(file_content), sheet_name='Controle Google ADS')
+                print(f"Arquivo do Google Ads lido com sucesso (aba 'Controle Google ADS'): {df.shape}")
+            except:
+                df = pd.read_excel(io.BytesIO(file_content))
+                print(f"Arquivo do Google Ads lido com sucesso (primeira aba): {df.shape}")
+            
+            # Processa dados (mesma lógica da função de upload)
+            date_col = detect_date_column(df)
+            creative_cols = detect_creative_columns(df)
+            cost_cols = detect_cost_columns(df)
+            leads_cols = detect_leads_columns(df)
+            
+            # Processa datas
+            if date_col:
+                df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+            
+            # Preenche campos em branco com 0 APÓS detectar as colunas
+            df = fill_empty_fields_with_zero(df)
+            
+            # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
+            df = fill_lead_mql_columns(df, leads_cols)
+            
+            # Cria identificador único do criativo
+            if creative_cols['campaign'] and creative_cols['creative']:
+                df['Criativo_Completo'] = df[creative_cols['campaign']].astype(str) + " | " + df[creative_cols['creative']].astype(str)
+            
+            # Calcula resumos
+            summary_data = {}
+            
+            if date_col:
+                if creative_cols['campaign'] and creative_cols['creative']:
+                    date_creative_counts = df.groupby('Data_Processada')['Criativo_Completo'].nunique().sort_index()
+                else:
+                    date_creative_counts = df['Data_Processada'].value_counts().sort_index()
+                
+                summary_df = pd.DataFrame({
+                    'Data': date_creative_counts.index,
+                    'Criativos': date_creative_counts.values
+                })
+                summary_df = summary_df[summary_df['Data'] != ''].reset_index(drop=True)
+                # Converte para dict e limpa valores NaN
+                temporal_records = []
+                for _, row in summary_df.iterrows():
+                    temporal_records.append({
+                        'Data': str(row['Data']) if pd.notna(row['Data']) else '',
+                        'Criativos': int(row['Criativos']) if pd.notna(row['Criativos']) else 0
+                    })
+                summary_data['temporal'] = temporal_records
+            
+            # Calcula KPIs
+            kpis = {}
+            if leads_cols.get('lead'):
+                try:
+                    total_leads = pd.to_numeric(df[leads_cols['lead']], errors='coerce').sum()
+                    if pd.isna(total_leads) or total_leads == 0:
+                        total_leads = df[leads_cols['lead']].notna().sum()
+                except:
+                    total_leads = df[leads_cols['lead']].notna().sum()
+                kpis['total_leads'] = int(total_leads) if not pd.isna(total_leads) else 0
+            
+            if leads_cols.get('mql'):
+                try:
+                    total_mqls = pd.to_numeric(df[leads_cols['mql']], errors='coerce').sum()
+                    if pd.isna(total_mqls) or total_mqls == 0:
+                        total_mqls = df[leads_cols['mql']].notna().sum()
+                except:
+                    total_mqls = df[leads_cols['mql']].notna().sum()
+                kpis['total_mqls'] = int(total_mqls) if not pd.isna(total_mqls) else 0
+            
+            if cost_cols.get('total'):
+                investimento = df[cost_cols['total']].sum()
+                kpis['investimento_total'] = float(investimento) if not pd.isna(investimento) else 0.0
+            
+            # Calcula Custo por MQL
+            if cost_cols.get('total') and leads_cols.get('mql') and kpis.get('total_mqls', 0) > 0:
+                kpis['custo_por_mql'] = float(investimento) / kpis['total_mqls'] if not pd.isna(investimento) else 0.0
+            else:
+                kpis['custo_por_mql'] = 0.0
+            
+            # Análise de criativos
+            creative_analysis = {}
+            print(f"Creative columns detected: {creative_cols}")
+            print(f"Leads columns detected: {leads_cols}")
+            
+            if leads_cols.get('lead'):
+                # Usar coluna de criativo se disponível, senão usar campanha
+                creative_col = creative_cols['creative'] if creative_cols['creative'] else creative_cols['campaign']
+                print(f"Using creative column: {creative_col}")
+                
+                # Se não encontrar coluna de criativo, tentar encontrar manualmente
+                if not creative_col:
+                    for col in df.columns:
+                        if col.lower() not in ['data', 'date', 'dia', 'leads', 'mql', 'investimento', 'custo', 'cpl', 'cpmql', 'cpc', 'cpm', 'ctr'] and df[col].dtype == 'object':
+                            creative_col = col
+                            print(f"Auto-detected creative column: {creative_col}")
+                            break
+                
+                if creative_col:
+                    # Análise detalhada de criativos
+                    print(f"Analyzing creatives with column: {creative_col}")
+                    creative_stats = df.groupby(creative_col).agg({
+                        leads_cols['lead']: ['sum', 'count'],
+                        leads_cols['mql']: 'sum' if leads_cols.get('mql') else lambda x: 0,
+                        cost_cols['total']: 'sum' if cost_cols.get('total') else lambda x: 0
+                    }).round(2)
+                
+                    # Flatten column names
+                    creative_stats.columns = ['Total_Leads', 'Qtd_Aparicoes', 'Total_MQLs', 'Total_Investimento']
+                    creative_stats = creative_stats.reset_index()
+                    
+                    # Renomear a coluna do criativo para 'creative' para o frontend
+                    if creative_col in creative_stats.columns:
+                        creative_stats = creative_stats.rename(columns={creative_col: 'creative'})
+                    
+                    print(f"Creative stats shape: {creative_stats.shape}")
+                    print(f"Creative stats columns: {creative_stats.columns.tolist()}")
+                    print(f"Creative stats sample:")
+                    print(creative_stats.head())
+                    
+                    # Calcula métricas adicionais
+                    creative_stats['Leads_por_Aparicao'] = (creative_stats['Total_Leads'] / creative_stats['Qtd_Aparicoes']).round(2)
+                    creative_stats['MQLs_por_Aparicao'] = (creative_stats['Total_MQLs'] / creative_stats['Qtd_Aparicoes']).round(2)
+                    creative_stats['Taxa_Conversao_Lead_MQL'] = (creative_stats['Total_MQLs'] / creative_stats['Total_Leads'] * 100).round(2)
+                    
+                    # Calcula custos por criativo
+                    creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
+                    creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
+                    
+                    # Substitui inf e NaN por 0
+                    creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
+                    
+                    # Ordena por total de leads
+                    creative_stats = creative_stats.sort_values('Total_Leads', ascending=False)
+                    
+                    print(f"Sorted creative stats:")
+                    print(creative_stats.head())
+                    
+                    # Top criativos para gráfico
+                    top_creatives = {}
+                    for _, row in creative_stats.head(10).iterrows():
+                        creative_name = str(row['creative'])
+                        top_creatives[creative_name] = int(row['Total_Leads'])
+                    
+                    # Criativo com mais leads
+                    top_lead_creative = creative_stats.iloc[0] if len(creative_stats) > 0 else None
+                    
+                    # Criativo com mais MQLs
+                    top_mql_creative = creative_stats.loc[creative_stats['Total_MQLs'].idxmax()] if len(creative_stats) > 0 else None
+                    
+                    print(f"Top lead creative: {top_lead_creative['creative'] if top_lead_creative is not None else 'None'}")
+                    print(f"Top MQL creative: {top_mql_creative['creative'] if top_mql_creative is not None else 'None'}")
+                    
+                    # Estatísticas gerais
+                    total_leads_all = creative_stats['Total_Leads'].sum()
+                    total_mqls_all = creative_stats['Total_MQLs'].sum()
+                    
+                    creative_analysis = {
+                        'top_creatives': top_creatives,
+                        'creative_details': clean_dataframe_for_json(creative_stats.head(20)),
+                        'top_lead_creative': {
+                            'name': str(top_lead_creative['creative']) if top_lead_creative is not None else 'N/A',
+                            'leads': int(top_lead_creative['Total_Leads']) if top_lead_creative is not None else 0,
+                            'mqls': int(top_lead_creative['Total_MQLs']) if top_lead_creative is not None else 0,
+                            'investimento': float(top_lead_creative['Total_Investimento']) if top_lead_creative is not None else 0,
+                            'appearances': int(top_lead_creative['Qtd_Aparicoes']) if top_lead_creative is not None else 0,
+                            'leads_per_appearance': float(top_lead_creative['Leads_por_Aparicao']) if top_lead_creative is not None else 0,
+                            'mqls_per_appearance': float(top_lead_creative['MQLs_por_Aparicao']) if top_lead_creative is not None else 0,
+                            'conversion_rate': float(top_lead_creative['Taxa_Conversao_Lead_MQL']) if top_lead_creative is not None else 0,
+                            'cpl': float(top_lead_creative['CPL']) if top_lead_creative is not None else 0,
+                            'cpmql': float(top_lead_creative['CPMQL']) if top_lead_creative is not None else 0
+                        } if top_lead_creative is not None else None,
+                        'top_mql_creative': {
+                            'name': str(top_mql_creative['creative']) if top_mql_creative is not None else 'N/A',
+                            'leads': int(top_mql_creative['Total_Leads']) if top_mql_creative is not None else 0,
+                            'mqls': int(top_mql_creative['Total_MQLs']) if top_mql_creative is not None else 0,
+                            'investimento': float(top_mql_creative['Total_Investimento']) if top_mql_creative is not None else 0,
+                            'appearances': int(top_mql_creative['Qtd_Aparicoes']) if top_mql_creative is not None else 0,
+                            'leads_per_appearance': float(top_mql_creative['Leads_por_Aparicao']) if top_mql_creative is not None else 0,
+                            'mqls_per_appearance': float(top_mql_creative['MQLs_por_Aparicao']) if top_mql_creative is not None else 0,
+                            'conversion_rate': float(top_mql_creative['Taxa_Conversao_Lead_MQL']) if top_mql_creative is not None else 0,
+                            'cpl': float(top_mql_creative['CPL']) if top_mql_creative is not None else 0,
+                            'cpmql': float(top_mql_creative['CPMQL']) if top_mql_creative is not None else 0
+                        } if top_mql_creative is not None else None,
+                        'total_creatives': len(creative_stats),
+                        'avg_leads_per_creative': float(creative_stats['Total_Leads'].mean()) if len(creative_stats) > 0 else 0,
+                        'avg_mqls_per_creative': float(creative_stats['Total_MQLs'].mean()) if len(creative_stats) > 0 else 0
+                    }
+                else:
+                    print("No creative column found, skipping creative analysis")
+                    creative_analysis = {}
+            
+            result = {
+                'success': True,
+                'data': {
+                    'columns': list(df.columns),
+                    'total_rows': len(df),
+                    'date_column': date_col,
+                    'creative_columns': creative_cols,
+                    'cost_columns': cost_cols,
+                    'leads_columns': leads_cols,
+                    'summary': summary_data,
+                    'kpis': kpis,
+                    'creative_analysis': creative_analysis,
+                    'raw_data': clean_dataframe_for_json(df.head(100))
+                }
+            }
+            
+            return jsonify({
+                'success': True,
+                'message': f'Planilha do Google Ads {file_name} carregada automaticamente!',
+                'data': result['data']
+            })
+                
+        except Exception as e:
+            print(f"Erro ao processar arquivo Excel do Google Ads: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
+            
+    except Exception as e:
+        print(f"Erro no upload automático do Google Ads: {str(e)}")
+        return jsonify({'error': f'Erro no upload automático do Google Ads: {str(e)}'}), 500
 
 @app.route('/download/<filename>')
 def download_file(filename):
