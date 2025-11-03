@@ -24,9 +24,9 @@
                     </div>
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-primary" onclick="uploadFile()">
-                        <i class="fas fa-upload"></i>
-                        Upload Planilha
+                    <button class="btn btn-primary" id="backToStartBtn" onclick="backToStart()" style="display: none;">
+                        <i class="fas fa-home"></i>
+                        Voltar ao Início
                     </button>
                 </div>
             </div>
@@ -38,33 +38,20 @@
         <div class="container">
             <!-- Upload Section -->
             <section class="upload-section" id="uploadSection">
-                <div class="upload-card">
-                    <div class="upload-icon">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                    </div>
-                    <h2>Analise seus Dados de Campanhas</h2>
-                    <p>Faça upload da sua planilha de controle ADS para visualizar insights detalhados</p>
-                    
-                    <div class="upload-area" id="uploadArea">
-                        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;">
-                        <div class="upload-content">
-                            <i class="fas fa-file-excel"></i>
-                            <p>Arraste e solte sua planilha aqui</p>
-                            <p class="upload-subtitle">ou clique para selecionar</p>
-                        </div>
-                    </div>
-                    
-                    <div class="upload-info">
-                        <p><i class="fas fa-check"></i> Formatos suportados: Excel (.xlsx, .xls) e CSV</p>
-                        <p><i class="fas fa-check"></i> Detecção automática de colunas</p>
-                        <p><i class="fas fa-check"></i> Análise completa de performance</p>
-                    </div>
+                <div class="upload-card-simplified">
+                    <h2>Carregar Dados</h2>
+                    <p>Selecione a fonte dos dados para análise</p>
                     
                     <div class="auto-upload-section">
-                        <button class="btn btn-secondary" id="autoUploadBtn">
-                            <i class="fas fa-download"></i> Carregar do Google Drive
-                        </button>
-                        <p class="auto-upload-info">Carregue automaticamente a planilha do Google Drive</p>
+                        <div class="auto-upload-buttons">
+                            <button class="btn btn-secondary" id="autoUploadBtn">
+                                <i class="fas fa-download"></i> Carregar Meta ADS
+                            </button>
+                            <button class="btn btn-secondary" id="googleAdsUploadBtn">
+                                <i class="fas fa-download"></i> Carregar Google Ads
+                            </button>
+                        </div>
+                        <p class="auto-upload-info">Carregue automaticamente as planilhas do Google Drive</p>
                     </div>
                 </div>
             </section>
