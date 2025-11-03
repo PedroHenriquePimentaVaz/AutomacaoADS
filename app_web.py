@@ -317,9 +317,9 @@ def detect_cost_columns(df):
             cost_cols['lead'] = col
         elif col_lower == 'cpmql':
             cost_cols['mql'] = col
-        elif 'investimento' in col_lower or 'investido' in col_lower:
+        elif ('investimento' in col_lower or 'investido' in col_lower) and 'habilidade' not in col_lower:
             cost_cols['total'] = col
-        elif 'custo' in col_lower or 'cost' in col_lower:
+        elif ('custo' in col_lower or 'cost' in col_lower) and 'habilidade' not in col_lower:
             if 'total' not in cost_cols:
                 cost_cols['total'] = col
     return cost_cols
