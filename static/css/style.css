@@ -177,6 +177,30 @@ body {
     width: 100%;
 }
 
+.upload-card-simplified {
+    background: var(--primary-bg);
+    border-radius: var(--radius-xl);
+    padding: 3rem;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-light);
+    max-width: 600px;
+    width: 100%;
+}
+
+.upload-card-simplified h2 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.upload-card-simplified > p {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+}
+
 .upload-icon {
     width: 80px;
     height: 80px;
@@ -266,6 +290,13 @@ body {
     text-align: center;
     padding-top: 2rem;
     border-top: 1px solid var(--border-light);
+}
+
+.auto-upload-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 
 .auto-upload-info {
