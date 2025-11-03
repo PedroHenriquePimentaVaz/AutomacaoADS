@@ -126,7 +126,12 @@ def fill_empty_fields_with_zero(df):
                 # Se mais de 50% dos valores não-nulos são numéricos, trata como numérica
                 if len(numeric_values.dropna()) / len(non_null_values) > 0.5:
                     # Converte toda a coluna para numérica e preenche NaN com 0
-                    df[col] = pd.to_numeric(df[col].astype('str'), errors='coerce').fillna(0)
+                    # Usa apply para converter item por item
+                    try:
+                        df[col] = df[col].apply(lambda x: pd.to_numeric(x, errors='coerce') if pd.notna(x) else 0).fillna(0)
+                    except:
+                        # Se der erro, mantém como string e preenche com string vazia
+                        df[col] = df[col].fillna('')
                 else:
                     # Preenche com string vazia
                     df[col] = df[col].fillna('')
