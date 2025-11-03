@@ -168,6 +168,18 @@ def fill_lead_mql_columns(df, leads_cols):
     
     return df
 
+def fill_term_column(df):
+    """Preenche coluna Term vazia com 'organico'"""
+    # Procura pela coluna Term (case insensitive)
+    for col in df.columns:
+        if col.lower() == 'term':
+            df[col] = df[col].fillna('organico')
+            # Também preenche strings vazias
+            df[col] = df[col].replace('', 'organico')
+            print(f"Coluna '{col}' preenchida com 'organico' onde estava vazio")
+            break
+    return df
+
 def parse_brazilian_date(date_str):
     """Mantém data brasileira DD/MM/YYYY no formato original"""
     if pd.isna(date_str) or date_str == '':
@@ -350,6 +362,9 @@ def upload_file():
         
         # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
         df = fill_lead_mql_columns(df, leads_cols)
+        
+        # Preenche coluna Term vazia com 'organico'
+        df = fill_term_column(df)
         
         # Cria identificador único do criativo
         if creative_cols['campaign'] and creative_cols['creative']:
@@ -584,6 +599,9 @@ def auto_upload():
             
             # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
             df = fill_lead_mql_columns(df, leads_cols)
+            
+            # Preenche coluna Term vazia com 'organico'
+            df = fill_term_column(df)
             
             # Cria identificador único do criativo
             if creative_cols['campaign'] and creative_cols['creative']:
@@ -831,6 +849,9 @@ def google_ads_upload():
             
             # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
             df = fill_lead_mql_columns(df, leads_cols)
+            
+            # Preenche coluna Term vazia com 'organico'
+            df = fill_term_column(df)
             
             # Cria identificador único do criativo
             if creative_cols['campaign'] and creative_cols['creative']:
