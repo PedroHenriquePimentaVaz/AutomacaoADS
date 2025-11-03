@@ -22,126 +22,10 @@ const tableBody = document.getElementById('tableBody');
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
-    initializeUpload();
     initializeCharts();
     initializeFilters();
     initializeAutoUpload();
 });
-
-// Upload functionality
-function initializeUpload() {
-    // Click to upload
-    uploadArea.addEventListener('click', () => {
-        fileInput.click();
-    });
-
-    // Drag and drop
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('dragover');
-    });
-
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFileUpload(files[0]);
-        }
-    });
-
-    // File input change
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleFileUpload(e.target.files[0]);
-        }
-    });
-}
-
-function handleFileUpload(file) {
-    // Validate file type
-    const allowedTypes = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-        'text/csv'
-    ];
-    
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/)) {
-        alert('Por favor, selecione um arquivo Excel (.xlsx, .xls) ou CSV válido.');
-        return;
-    }
-
-    // Show loading
-    showLoading();
-
-    // Upload file
-    const formData = new FormData();
-    formData.append('file', file);
-
-    console.log('Starting upload...');
-    console.log('File details:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-    });
-    
-    // Criar um AbortController para timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
-    
-    fetch('/upload', {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-    })
-    .then(response => {
-        console.log('Upload response received:', response.status, response.statusText);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        return response.text();
-    })
-    .then(text => {
-        clearTimeout(timeoutId); // Limpar timeout
-        try {
-            const data = JSON.parse(text);
-            if (data.success) {
-                currentData = data.data;
-                showDashboard();
-            } else {
-                throw new Error(data.error || 'Erro ao processar arquivo');
-            }
-        } catch (parseError) {
-            console.error('JSON Parse Error:', parseError);
-            console.error('Response text:', text);
-            throw new Error('Resposta do servidor inválida. Verifique o arquivo e tente novamente.');
-        }
-    })
-    .catch(error => {
-        clearTimeout(timeoutId); // Limpar timeout
-        console.error('Upload Error Details:', error);
-        console.error('Error type:', typeof error);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        
-        let errorMessage = 'Erro desconhecido';
-        if (error.name === 'AbortError') {
-            errorMessage = 'Upload cancelado por timeout (30s). Arquivo muito grande ou servidor lento.';
-        } else if (error.message.includes('Failed to fetch')) {
-            errorMessage = 'Erro de conexão com o servidor. Verifique se o servidor está rodando em http://localhost:5000';
-        } else {
-            errorMessage = 'Erro ao processar arquivo: ' + error.message;
-        }
-        
-        alert(errorMessage);
-        showUpload();
-    });
-}
 
 function showLoading() {
     uploadSection.style.display = 'none';
@@ -153,6 +37,12 @@ function showUpload() {
     uploadSection.style.display = 'block';
     dashboardSection.style.display = 'none';
     loadingSection.style.display = 'none';
+    
+    // Hide back button when on upload screen
+    const backBtn = document.getElementById('backToStartBtn');
+    if (backBtn) {
+        backBtn.style.display = 'none';
+    }
 }
 
 function showDashboard() {
@@ -168,6 +58,18 @@ function showDashboard() {
     
     // Add fade-in animation
     dashboardSection.classList.add('fade-in');
+    
+    // Show back button when viewing dashboard
+    const backBtn = document.getElementById('backToStartBtn');
+    if (backBtn) {
+        backBtn.style.display = 'block';
+    }
+}
+
+function backToStart() {
+    currentData = null;
+    filteredData = null;
+    showUpload();
 }
 
 // KPIs rendering
@@ -1084,9 +986,46 @@ function applyFilters() {
     // Create filtered data
     filteredData = JSON.parse(JSON.stringify(currentData)); // Deep copy
     
-    // Apply date filter
-    if (dateFilter !== 'all' && filteredData.summary && filteredData.summary.temporal) {
-        filteredData.summary.temporal = filteredData.summary.temporal.filter(item => item.Data === dateFilter);
+    // Apply date filter to raw_data
+    if (dateFilter !== 'all' && filteredData.raw_data) {
+        const dateCol = filteredData.date_column || 'Data';
+        
+        // Helper function to normalize date format
+        function normalizeDate(dateStr) {
+            if (!dateStr) return '';
+            
+            // If already in DD/MM/YYYY format, return as is
+            if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                return dateStr;
+            }
+            
+            // If in YYYY-MM-DD format (with or without time)
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+                const parts = dateStr.split(' ')[0].split('-');
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            
+            // Try to parse and format
+            try {
+                const date = new Date(dateStr);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            } catch (e) {
+                return dateStr;
+            }
+        }
+        
+        filteredData.raw_data = filteredData.raw_data.filter(row => {
+            const rowDate = row[dateCol] || row['Data_Processada'] || '';
+            const normalizedRowDate = normalizeDate(rowDate);
+            return normalizedRowDate === dateFilter;
+        });
+        
+        // Recalculate KPIs based on filtered data
+        filteredData.kpis = calculateKPIs(filteredData);
+        filteredData.total_rows = filteredData.raw_data.length;
     }
     
     // Re-render charts with filtered data
@@ -1106,6 +1045,55 @@ function exportChart(chartType) {
     // This would implement chart export functionality
     console.log('Exporting chart:', chartType);
     alert('Funcionalidade de exportação será implementada em breve!');
+}
+
+function calculateKPIs(data) {
+    if (!data.raw_data || data.raw_data.length === 0) {
+        return {
+            total_leads: 0,
+            total_mqls: 0,
+            investimento_total: 0,
+            custo_por_mql: 0
+        };
+    }
+    
+    const leadsCol = data.leads_columns?.lead;
+    const mqlCol = data.leads_columns?.mql;
+    const costCol = data.cost_columns?.total;
+    
+    let totalLeads = 0;
+    let totalMQLs = 0;
+    let totalCost = 0;
+    
+    data.raw_data.forEach(row => {
+        // Sum leads
+        if (leadsCol && row[leadsCol] !== undefined) {
+            const leads = parseFloat(row[leadsCol]) || 0;
+            totalLeads += leads;
+        }
+        
+        // Sum MQLs
+        if (mqlCol && row[mqlCol] !== undefined) {
+            const mqls = parseFloat(row[mqlCol]) || 0;
+            totalMQLs += mqls;
+        }
+        
+        // Sum cost
+        if (costCol && row[costCol] !== undefined) {
+            const cost = parseFloat(row[costCol]) || 0;
+            totalCost += cost;
+        }
+    });
+    
+    // Calculate Custo por MQL
+    const custoMQL = totalMQLs > 0 ? totalCost / totalMQLs : 0;
+    
+    return {
+        total_leads: Math.round(totalLeads),
+        total_mqls: Math.round(totalMQLs),
+        investimento_total: parseFloat(totalCost.toFixed(2)),
+        custo_por_mql: parseFloat(custoMQL.toFixed(2))
+    };
 }
 
 // Utility functions
@@ -1158,9 +1146,14 @@ function downloadCSV(content, filename) {
 // Auto upload functionality
 function initializeAutoUpload() {
     const autoUploadBtn = document.getElementById('autoUploadBtn');
+    const googleAdsUploadBtn = document.getElementById('googleAdsUploadBtn');
     
     if (autoUploadBtn) {
         autoUploadBtn.addEventListener('click', handleAutoUpload);
+    }
+    
+    if (googleAdsUploadBtn) {
+        googleAdsUploadBtn.addEventListener('click', handleGoogleAdsUpload);
     }
 }
 
@@ -1205,6 +1198,50 @@ async function handleAutoUpload() {
         // Restore button state
         autoUploadBtn.innerHTML = originalText;
         autoUploadBtn.disabled = false;
+    }
+}
+
+async function handleGoogleAdsUpload() {
+    const googleAdsUploadBtn = document.getElementById('googleAdsUploadBtn');
+    const originalText = googleAdsUploadBtn.innerHTML;
+    
+    try {
+        // Show loading state
+        googleAdsUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
+        googleAdsUploadBtn.disabled = true;
+        
+        // Make request to google-ads-upload endpoint
+        const response = await fetch('/google-ads-upload', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        console.log('Response from google-ads-upload:', result);
+        
+        if (result.success) {
+            // Process the data
+            currentData = result.data;
+            filteredData = currentData;
+            
+            // Show dashboard
+            showDashboard();
+            
+            // Show success message
+            showNotification(result.message || 'Planilha do Google Ads carregada automaticamente!', 'success');
+        } else {
+            showNotification(result.error || 'Erro ao carregar planilha do Google Ads', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Erro no upload do Google Ads:', error);
+        showNotification('Erro de conexão ao carregar planilha do Google Ads', 'error');
+    } finally {
+        // Restore button state
+        googleAdsUploadBtn.innerHTML = originalText;
+        googleAdsUploadBtn.disabled = false;
     }
 }
 
