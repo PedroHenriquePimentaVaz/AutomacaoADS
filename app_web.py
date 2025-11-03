@@ -865,6 +865,10 @@ def google_ads_upload():
             print("Colunas da planilha:", list(df.columns))
             
             # Processa APENAS as colunas necessárias: Dia, MQL?, Term
+            # Define estruturas vazias para não quebrar
+            creative_cols = {}
+            cost_cols = {}
+            
             # Detecta coluna de data
             date_col = detect_date_column(df)
             if date_col:
