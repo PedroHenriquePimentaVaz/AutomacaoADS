@@ -532,7 +532,7 @@ def upload_file():
                 'summary': summary_data,
                 'kpis': kpis,
                 'creative_analysis': creative_analysis,
-                'raw_data': clean_dataframe_for_json(df.head(100))  # Primeiras 100 linhas
+                'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
             }
         }
         print("Upload processing completed successfully")
@@ -766,7 +766,7 @@ def auto_upload():
                     'summary': summary_data,
                     'kpis': kpis,
                     'creative_analysis': creative_analysis,
-                    'raw_data': clean_dataframe_for_json(df.head(100))  # Primeiras 100 linhas
+                    'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
                 }
             }
             

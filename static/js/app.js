@@ -146,9 +146,21 @@ function renderKPIs() {
         kpisGrid.appendChild(cplCard);
     }
 
-    // Date range
-    if (currentData.summary && currentData.summary.temporal) {
-        const dateRange = currentData.summary.temporal.length;
+    // Date range - calculate actual number of unique dates in raw_data
+    let dateRange = 0;
+    if (filteredData.raw_data && filteredData.raw_data.length > 0) {
+        const dateCol = filteredData.date_column || 'Data';
+        const uniqueDates = new Set();
+        filteredData.raw_data.forEach(row => {
+            const date = row[dateCol] || row['Data_Processada'];
+            if (date) uniqueDates.add(date);
+        });
+        dateRange = uniqueDates.size;
+    } else if (filteredData.summary && filteredData.summary.temporal) {
+        dateRange = filteredData.summary.temporal.length;
+    }
+    
+    if (dateRange > 0) {
         const dateCard = createKPICard(
             'Período Analisado',
             dateRange + ' dias',
@@ -982,6 +994,7 @@ function applyFilters() {
     if (!currentData) return;
     
     const dateFilter = document.getElementById('dateFilter').value;
+    console.log('Applying date filter:', dateFilter);
     
     // Create filtered data
     filteredData = JSON.parse(JSON.stringify(currentData)); // Deep copy
@@ -989,6 +1002,8 @@ function applyFilters() {
     // Apply date filter to raw_data
     if (dateFilter !== 'all' && filteredData.raw_data) {
         const dateCol = filteredData.date_column || 'Data';
+        console.log('Date column:', dateCol);
+        console.log('Raw data rows before filter:', filteredData.raw_data.length);
         
         // Helper function to normalize date format
         function normalizeDate(dateStr) {
@@ -1023,9 +1038,12 @@ function applyFilters() {
             return normalizedRowDate === dateFilter;
         });
         
+        console.log('Raw data rows after filter:', filteredData.raw_data.length);
+        
         // Recalculate KPIs based on filtered data
         filteredData.kpis = calculateKPIs(filteredData);
         filteredData.total_rows = filteredData.raw_data.length;
+        console.log('Recalculated KPIs:', filteredData.kpis);
     }
     
     // Re-render charts with filtered data
