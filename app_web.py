@@ -185,6 +185,29 @@ def fill_term_column(df):
             break
     return df
 
+def process_mql_column_to_leads(df):
+    """Processa coluna MQL? para criar colunas de contagem de LEADS e MQLs"""
+    # Procura pela coluna MQL? (case insensitive)
+    mql_col = None
+    for col in df.columns:
+        if 'mql' in col.lower():
+            mql_col = col
+            break
+    
+    if mql_col:
+        print(f"Encontrada coluna MQL: {mql_col}")
+        
+        # Cria colunas temporárias de contagem
+        df['COUNT_LEAD'] = df[mql_col].apply(lambda x: 1 if str(x).upper().strip() == 'LEAD' else 0)
+        df['COUNT_MQL'] = df[mql_col].apply(lambda x: 1 if str(x).upper().strip() == 'MQL' else 0)
+        
+        print(f"Total de LEADS (contados): {df['COUNT_LEAD'].sum()}")
+        print(f"Total de MQLs (contados): {df['COUNT_MQL'].sum()}")
+        
+        return True, 'COUNT_LEAD', 'COUNT_MQL'
+    
+    return False, None, None
+
 def parse_brazilian_date(date_str):
     """Mantém data brasileira DD/MM/YYYY no formato original"""
     if pd.isna(date_str) or date_str == '':
@@ -839,24 +862,37 @@ def google_ads_upload():
                 df = pd.read_excel(io.BytesIO(file_content))
                 print(f"Arquivo do Google Ads lido com sucesso (primeira aba): {df.shape}")
             
+            print("Colunas da planilha:", list(df.columns))
+            
             # Processa dados (mesma lógica da função de upload)
             date_col = detect_date_column(df)
             creative_cols = detect_creative_columns(df)
             cost_cols = detect_cost_columns(df)
-            leads_cols = detect_leads_columns(df)
             
             # Processa datas
             if date_col:
                 df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+            
+            # Preenche coluna Term vazia com 'organico'
+            df = fill_term_column(df)
+            
+            # Processa coluna MQL? para criar colunas de contagem
+            has_mql_col, lead_count_col, mql_count_col = process_mql_column_to_leads(df)
+            
+            if has_mql_col:
+                # Usa as colunas de contagem criadas
+                leads_cols = {'lead': lead_count_col, 'mql': mql_count_col}
+                print(f"Usando colunas de contagem: {leads_cols}")
+            else:
+                # Tenta detectar colunas tradicionais
+                leads_cols = detect_leads_columns(df)
+                print(f"Colunas de leads detectadas: {leads_cols}")
             
             # Preenche campos em branco com 0 APÓS detectar as colunas
             df = fill_empty_fields_with_zero(df)
             
             # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
             df = fill_lead_mql_columns(df, leads_cols)
-            
-            # Preenche coluna Term vazia com 'organico'
-            df = fill_term_column(df)
             
             # Cria identificador único do criativo
             if creative_cols['campaign'] and creative_cols['creative']:
