@@ -83,11 +83,12 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 
 ### Dashboard de Leads
 - Upload dedicado via botão **Carregar Leads** (CSV/XLSX)
+- Combinação automática de todas as abas com dados (suporta milhares de registros)
 - KPIs automáticos (entradas recentes, conversões, perdas, responsáveis)
 - Distribuição dos principais status, origens e atendentes
 - Gráficos de timeline, status e fontes com Chart.js
 - Tabelas com últimos leads atualizados e base completa com busca e paginação
-- Seleção automática da aba com mais registros quando a planilha possui múltiplas sheets
+- Metadados exibindo resumo da planilha (quantidade de abas e registros)
 
 ### Integração Google Drive
 - Download automático de planilhas

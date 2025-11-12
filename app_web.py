@@ -1,37 +1,3 @@
-def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
-    """
-    Lê planilha de leads procurando automaticamente a aba mais completa.
-    Retorna DataFrame e nome da aba utilizada (ou None).
-    """
-    file_like = io.BytesIO(file_bytes)
-    lower_filename = filename.lower()
-    
-    if lower_filename.endswith('.csv'):
-        file_like.seek(0)
-        return pd.read_csv(file_like), None
-    
-    try:
-        file_like.seek(0)
-        sheets_dict = pd.read_excel(file_like, sheet_name=None)
-        
-        valid_sheets = {}
-        for sheet_name, sheet_df in sheets_dict.items():
-            cleaned_df = sheet_df.dropna(how='all')
-            print(f"[LEADS] Aba '{sheet_name}' -> linhas: {cleaned_df.shape[0]}, colunas: {cleaned_df.shape[1]}")
-            if cleaned_df.shape[0] > 0 and cleaned_df.shape[1] > 0:
-                valid_sheets[sheet_name] = cleaned_df
-        
-        if not valid_sheets:
-            raise ValueError("Nenhuma aba com dados foi encontrada")
-        
-        # Seleciona a aba com maior número de linhas
-        selected_sheet, selected_df = max(valid_sheets.items(), key=lambda item: item[1].shape[0])
-        selected_df = selected_df.reset_index(drop=True)
-        return selected_df, selected_sheet
-    except Exception:
-        file_like.seek(0)
-        df = pd.read_excel(file_like)
-        return df, None
 from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
 import numpy as np
@@ -50,6 +16,175 @@ app.jinja_env.auto_reload = True
 app.jinja_env.cache = {}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+
+def _make_unique_headers(headers):
+    """Garante cabeçalhos únicos e não vazios."""
+    normalized = []
+    seen = {}
+    for header in headers:
+        base = str(header).strip() if header is not None else ''
+        if base == '':
+            base = 'Coluna'
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        normalized.append(base if count == 0 else f"{base}_{count + 1}")
+    return normalized
+
+
+def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials):
+    """Carrega todas as abas diretamente da API do Google Sheets."""
+    sheets_service = build('sheets', 'v4', credentials=credentials)
+    metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+
+    frames = []
+    sheet_stats = []
+    primary_sheet = None
+    max_rows = -1
+
+    for sheet in metadata.get('sheets', []):
+        properties = sheet.get('properties', {})
+        title = properties.get('title', f"Aba_{len(sheet_stats) + 1}")
+
+        values_response = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=title
+        ).execute()
+
+        values = values_response.get('values', [])
+        if not values:
+            sheet_stats.append({'name': title, 'rows': 0, 'columns': 0})
+            print(f"[LEADS][SheetsAPI] Aba '{title}' sem dados.")
+            continue
+
+        header = _make_unique_headers(values[0])
+        data_rows = values[1:] if len(values) > 1 else []
+        max_columns = max(len(row) for row in values)
+        while len(header) < max_columns:
+            header.append(f"Coluna_{len(header) + 1}")
+
+        if not data_rows:
+            sheet_stats.append({'name': title, 'rows': 0, 'columns': len(header)})
+            print(f"[LEADS][SheetsAPI] Aba '{title}' somente com cabeçalho.")
+            continue
+
+        normalized_rows = []
+        for row in data_rows:
+            if len(row) < len(header):
+                row = row + [''] * (len(header) - len(row))
+            normalized_rows.append(row)
+
+        df_sheet = pd.DataFrame(normalized_rows, columns=header)
+        df_sheet.replace('', pd.NA, inplace=True)
+        cleaned_df = df_sheet.dropna(how='all').dropna(axis=1, how='all')
+
+        rows = int(cleaned_df.shape[0])
+        cols = int(cleaned_df.shape[1])
+        sheet_stats.append({'name': title, 'rows': rows, 'columns': cols})
+        print(f"[LEADS][SheetsAPI] Aba '{title}' -> linhas: {rows}, colunas: {cols}")
+
+        if rows == 0 or cols == 0:
+            continue
+
+        frames.append(cleaned_df)
+        if rows > max_rows:
+            max_rows = rows
+            primary_sheet = title
+
+    if not frames:
+        raise ValueError("Nenhuma aba com dados relevantes via Sheets API")
+
+    combined_df = pd.concat(frames, ignore_index=True, sort=False)
+    combined_df = combined_df.dropna(how='all').reset_index(drop=True)
+    combined_rows = int(combined_df.shape[0])
+
+    return combined_df, {
+        'primary_sheet': primary_sheet,
+        'sheet_stats': sheet_stats,
+        'sheet_count': len(sheet_stats),
+        'combined_rows': combined_rows,
+        'source': 'google_sheets_api'
+    }
+
+
+def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
+    """Lê planilhas locais combinando todas as abas com dados válidos."""
+    file_like = io.BytesIO(file_bytes)
+    lower_filename = filename.lower()
+
+    sheet_stats = []
+
+    # CSV
+    if lower_filename.endswith('.csv'):
+        file_like.seek(0)
+        df = pd.read_csv(file_like, dtype=str)
+        df.replace('', pd.NA, inplace=True)
+        sheet_stats.append({
+            'name': 'CSV',
+            'rows': int(df.dropna(how='all').shape[0]),
+            'columns': int(df.dropna(axis=1, how='all').shape[1])
+        })
+        return df, {
+            'primary_sheet': 'CSV',
+            'sheet_stats': sheet_stats,
+            'sheet_count': 1,
+            'combined_rows': int(df.dropna(how='all').shape[0]),
+            'source': 'csv_upload'
+        }
+
+    try:
+        file_like.seek(0)
+        sheets_dict = pd.read_excel(file_like, sheet_name=None, dtype=str)
+
+        valid_frames = []
+        primary_sheet = None
+        max_rows = -1
+
+        for sheet_name, sheet_df in sheets_dict.items():
+            cleaned_df = sheet_df.dropna(how='all').dropna(axis=1, how='all')
+            cleaned_df.replace('', pd.NA, inplace=True)
+            rows = int(cleaned_df.shape[0])
+            cols = int(cleaned_df.shape[1])
+
+            sheet_stats.append({'name': sheet_name, 'rows': rows, 'columns': cols})
+            print(f"[LEADS] Aba '{sheet_name}' -> linhas: {rows}, colunas: {cols}")
+
+            if rows == 0 or cols == 0:
+                continue
+
+            valid_frames.append(cleaned_df)
+            if rows > max_rows:
+                max_rows = rows
+                primary_sheet = sheet_name
+
+        if not valid_frames:
+            raise ValueError("Nenhuma aba com dados foi encontrada")
+
+        combined_df = pd.concat(valid_frames, ignore_index=True, sort=False)
+        combined_df = combined_df.dropna(how='all').reset_index(drop=True)
+        combined_rows = int(combined_df.shape[0])
+
+        return combined_df, {
+            'primary_sheet': primary_sheet,
+            'sheet_stats': sheet_stats,
+            'sheet_count': len(sheet_stats),
+            'combined_rows': combined_rows,
+            'source': 'xlsx_export'
+        }
+    except Exception as exc:
+        print(f"[LEADS] Falha ao combinar abas ({exc}), tentando leitura simples.")
+        file_like.seek(0)
+        df = pd.read_excel(file_like, dtype=str)
+        df.replace('', pd.NA, inplace=True)
+        df = df.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
+        sheet_stats.append({'name': 'Sheet1', 'rows': int(df.shape[0]), 'columns': int(df.shape[1])})
+        return df, {
+            'primary_sheet': 'Sheet1',
+            'sheet_stats': sheet_stats,
+            'sheet_count': len(sheet_stats),
+            'combined_rows': int(df.shape[0]),
+            'source': 'xlsx_export_fallback'
+        }
 
 def load_drive_credentials():
     """Carrega credenciais do Google Drive"""
@@ -1040,28 +1175,28 @@ def auto_upload():
                 else:
                     print("No creative column found, skipping creative analysis")
                     creative_analysis = {}
-            
-            result = {
-                'success': True,
-                'data': {
-                    'columns': list(df.columns),
-                    'total_rows': len(df),
-                    'date_column': date_col,
-                    'creative_columns': creative_cols,
-                    'cost_columns': cost_cols,
-                    'leads_columns': leads_cols,
-                    'summary': summary_data,
-                    'kpis': kpis,
-                    'creative_analysis': creative_analysis,
-                    'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
+                
+                result = {
+                    'success': True,
+                    'data': {
+                        'columns': list(df.columns),
+                        'total_rows': len(df),
+                        'date_column': date_col,
+                        'creative_columns': creative_cols,
+                        'cost_columns': cost_cols,
+                        'leads_columns': leads_cols,
+                        'summary': summary_data,
+                        'kpis': kpis,
+                        'creative_analysis': creative_analysis,
+                        'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
+                    }
                 }
-            }
-            
-            return jsonify({
-                'success': True,
-                'message': f'Planilha {file_name} carregada automaticamente do Google Drive!',
-                'data': result['data']
-            })
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Planilha {file_name} carregada automaticamente do Google Drive!',
+                    'data': result['data']
+                })
                 
         except Exception as e:
             print(f"Erro ao processar arquivo Excel: {str(e)}")
@@ -1314,33 +1449,42 @@ def favicon():
 def auto_upload_leads():
     try:
         file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
-        
+
         credentials = load_drive_credentials()
         if not credentials:
             return jsonify({'error': 'Credenciais do Google Drive não encontradas'}), 500
-        
-        file_content, file_name = download_file_from_drive(file_id, credentials)
-        if not file_content:
-            return jsonify({'error': 'Erro ao baixar arquivo de leads do Google Drive'}), 500
-        
+
+        df = None
+        sheet_info = None
+        file_name = None
+
         try:
-            df, sheet_name = load_leads_dataframe_from_bytes(file_content, file_name)
-            
-            analysis = analyze_leads_dataframe(df)
-            analysis['source_sheet'] = sheet_name
-            analysis['file_name'] = file_name
-            
-            return jsonify({
-                'success': True,
-                'message': f'Planilha de leads {file_name} carregada automaticamente!',
-                'sheet_name': sheet_name,
-                'data': analysis
-            })
-        except Exception as e:
-            print(f"Erro ao processar leads: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Erro ao processar planilha de leads: {str(e)}'}), 500
+            df, sheet_info = load_leads_dataframe_from_google_sheets(file_id, credentials)
+            file_name = sheet_info.get('primary_sheet', 'Google Sheet')
+            print(f"[LEADS] Carregado via Sheets API com {sheet_info.get('combined_rows', len(df))} linhas." )
+        except Exception as sheet_error:
+            print(f"[LEADS] Falha Sheets API, tentando exportação XLSX: {sheet_error}")
+
+        if df is None:
+            file_content, file_name = download_file_from_drive(file_id, credentials)
+            if not file_content:
+                return jsonify({'error': 'Erro ao baixar arquivo de leads do Google Drive'}), 500
+
+            df, sheet_info = load_leads_dataframe_from_bytes(file_content, file_name)
+
+        sheet_info = sheet_info or {}
+        sheet_info['file_name'] = file_name
+
+        analysis = analyze_leads_dataframe(df)
+        analysis['sheet_info'] = sheet_info
+        analysis['file_name'] = file_name
+
+        return jsonify({
+            'success': True,
+            'message': f'Planilha de leads {file_name} carregada automaticamente!',
+            'sheet_info': sheet_info,
+            'data': analysis
+        })
     except Exception as e:
         print(f"Erro no upload automático de leads: {str(e)}")
         return jsonify({'error': f'Erro no upload automático de leads: {str(e)}'}), 500
@@ -1350,25 +1494,25 @@ def upload_leads():
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
-        
-        if file.filename.endswith('.csv'):
-            file_bytes = file.read()
-            df, sheet_name = load_leads_dataframe_from_bytes(file_bytes, file.filename)
-        else:
-            file_bytes = file.read()
-            df, sheet_name = load_leads_dataframe_from_bytes(file_bytes, file.filename)
-        
+
+        file_bytes = file.read()
+        df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename)
+        sheet_info = sheet_info or {}
+        sheet_info.setdefault('source', 'manual_upload')
+        sheet_info['file_name'] = file.filename
+
         analysis = analyze_leads_dataframe(df)
-        analysis['source_sheet'] = sheet_name
+        analysis['sheet_info'] = sheet_info
         analysis['file_name'] = file.filename
-        
+
         return jsonify({
             'success': True,
             'message': 'Planilha de leads processada com sucesso!',
+            'sheet_info': sheet_info,
             'data': analysis
         })
     except Exception as e:
