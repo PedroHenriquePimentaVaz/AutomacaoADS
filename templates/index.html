@@ -50,9 +50,19 @@
                             <button class="btn btn-secondary" id="googleAdsUploadBtn">
                                 <i class="fas fa-download"></i> Carregar Google Ads
                             </button>
+                            <button class="btn btn-secondary" id="autoLeadsUploadBtn">
+                                <i class="fas fa-users"></i> Carregar Leads
+                            </button>
                         </div>
                         <p class="auto-upload-info">Carregue automaticamente as planilhas do Google Drive</p>
                     </div>
+                    <div class="manual-upload-section">
+                        <button class="btn btn-secondary" id="leadsUploadBtn">
+                            <i class="fas fa-upload"></i> Carregar Leads
+                        </button>
+                        <p class="manual-upload-info">Envie a planilha completa de leads para gerar o dashboard</p>
+                    </div>
+                    <input type="file" id="leadsFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
                 </div>
             </section>
 
@@ -442,11 +452,130 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Leads Dashboard Section -->
+            <section class="dashboard-section" id="leadsDashboardSection" style="display: none;">
+                <div class="filters-card leads-info-card">
+                    <div class="leads-header">
+                        <h3><i class="fas fa-users"></i> Dashboard de Leads</h3>
+                        <p>Resumo estratégico da base de leads carregada</p>
+                    </div>
+                </div>
+
+                <div class="kpis-grid" id="leadsKpisGrid"></div>
+
+                <div class="analysis-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-chart-line"></i> Panorama dos Leads</h2>
+                    </div>
+                    <div class="charts-section leads-charts">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Status dos Leads</h3>
+                                <div class="chart-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportLeadChart('status')">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="leadStatusChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Origem dos Leads</h3>
+                                <div class="chart-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportLeadChart('source')">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="leadSourceChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card full-width">
+                            <div class="chart-header">
+                                <h3>Evolução Mensal</h3>
+                                <div class="chart-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportLeadChart('timeline')">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="leadTimelineChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="leads-distribution-section">
+                        <div class="distribution-card">
+                            <h4><i class="fas fa-stream"></i> Principais Status</h4>
+                            <div class="distribution-list" id="leadStatusList"></div>
+                        </div>
+                        <div class="distribution-card">
+                            <h4><i class="fas fa-bullhorn"></i> Principais Origens</h4>
+                            <div class="distribution-list" id="leadSourceList"></div>
+                        </div>
+                        <div class="distribution-card">
+                            <h4><i class="fas fa-user-tie"></i> Responsáveis</h4>
+                            <div class="distribution-list" id="leadOwnerList"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-user-clock"></i> Leads Recentes</h2>
+                    </div>
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h3>Últimos Leads Atualizados</h3>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table" id="leadsRecentTable">
+                                <thead id="leadsRecentHead"></thead>
+                                <tbody id="leadsRecentBody">
+                                    <tr><td>Carregando dados...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Base Completa de Leads</h3>
+                        <div class="table-actions">
+                            <input type="text" id="leadSearchInput" placeholder="Buscar..." class="search-input">
+                            <select id="leadRowsSelect" class="rows-select">
+                                <option value="50">50 linhas</option>
+                                <option value="100">100 linhas</option>
+                                <option value="200">200 linhas</option>
+                                <option value="all">Todas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="leadsDataTable">
+                            <thead id="leadsTableHead"></thead>
+                            <tbody id="leadsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </main>
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=leads-dashboard"></script>
 </body>
 </html>

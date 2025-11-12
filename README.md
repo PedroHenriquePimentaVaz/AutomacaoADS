@@ -42,7 +42,8 @@ python app_web.py
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-DRIVE_FILE_ID=seu_file_id_do_google_drive
+DRIVE_FILE_ID=1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY
+LEADS_FILE_ID=1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8
 GOOGLE_ADS_FILE_ID=1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY
 GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 ```
@@ -79,6 +80,14 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 - Tabelas detalhadas
 - Cards de destaque
 - Design responsivo
+
+### Dashboard de Leads
+- Upload dedicado via botão **Carregar Leads** (CSV/XLSX)
+- KPIs automáticos (entradas recentes, conversões, perdas, responsáveis)
+- Distribuição dos principais status, origens e atendentes
+- Gráficos de timeline, status e fontes com Chart.js
+- Tabelas com últimos leads atualizados e base completa com busca e paginação
+- Seleção automática da aba com mais registros quando a planilha possui múltiplas sheets
 
 ### Integração Google Drive
 - Download automático de planilhas

@@ -305,6 +305,19 @@ body {
     color: var(--text-secondary);
 }
 
+.manual-upload-section {
+    margin-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.manual-upload-info {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
 /* Notifications */
 .notification {
     position: fixed;
@@ -422,6 +435,26 @@ body {
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border-light);
+}
+
+.leads-info-card {
+    background: linear-gradient(135deg, rgba(0, 28, 84, 0.08), rgba(35, 116, 185, 0.12));
+    border: 1px solid rgba(0, 28, 84, 0.1);
+}
+
+.leads-header h3 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--bh-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.leads-header p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
 }
 
 .filters-header h3 {
@@ -1003,6 +1036,72 @@ body {
 .chart-content {
     height: 300px;
     position: relative;
+}
+
+.leads-distribution-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.distribution-card {
+    background: var(--primary-bg);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
+}
+
+.distribution-card h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.distribution-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.distribution-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    background: var(--accent-bg);
+    border: 1px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.distribution-item:hover {
+    border-color: rgba(0, 28, 84, 0.1);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.distribution-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    max-width: 60%;
+    word-break: break-word;
+}
+
+.distribution-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--bh-primary);
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
 }
 
 /* Table */

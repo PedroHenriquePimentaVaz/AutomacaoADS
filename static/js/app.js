@@ -1,5 +1,6 @@
 // Global variables
 let currentData = null;
+let currentLeadsData = null;
 let temporalChart = null;
 let creativesChart = null;
 let distributionChart = null;
@@ -8,34 +9,71 @@ let costsChart = null;
 let conversionChart = null;
 let campaignsChart = null;
 let filteredData = null;
+let leadStatusChart = null;
+let leadSourceChart = null;
+let leadTimelineChart = null;
+let filteredLeadsData = null;
 
 // DOM Elements
 const uploadSection = document.getElementById('uploadSection');
 const loadingSection = document.getElementById('loadingSection');
 const dashboardSection = document.getElementById('dashboardSection');
+const leadsDashboardSection = document.getElementById('leadsDashboardSection');
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
+const leadsFileInput = document.getElementById('leadsFileInput');
 const kpisGrid = document.getElementById('kpisGrid');
 const dataTable = document.getElementById('dataTable');
 const tableHead = document.getElementById('tableHead');
 const tableBody = document.getElementById('tableBody');
+const leadsKpisGrid = document.getElementById('leadsKpisGrid');
+const leadsTableHead = document.getElementById('leadsTableHead');
+const leadsTableBody = document.getElementById('leadsTableBody');
+const leadsRecentHead = document.getElementById('leadsRecentHead');
+const leadsRecentBody = document.getElementById('leadsRecentBody');
+const leadStatusList = document.getElementById('leadStatusList');
+const leadSourceList = document.getElementById('leadSourceList');
+const leadOwnerList = document.getElementById('leadOwnerList');
+const leadSearchInput = document.getElementById('leadSearchInput');
+const leadRowsSelect = document.getElementById('leadRowsSelect');
+let autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
+    if (!autoLeadsUploadBtn) {
+        const buttonsContainer = document.querySelector('.auto-upload-buttons');
+        if (buttonsContainer) {
+            const leadsBtn = document.createElement('button');
+            leadsBtn.className = 'btn btn-secondary';
+            leadsBtn.id = 'autoLeadsUploadBtn';
+            leadsBtn.innerHTML = '<i class="fas fa-users"></i> Carregar Leads';
+            buttonsContainer.appendChild(leadsBtn);
+            autoLeadsUploadBtn = leadsBtn;
+        }
+    }
+    
     initializeCharts();
     initializeFilters();
     initializeAutoUpload();
+    initializeLeadsUpload();
+    initializeLeadControls();
 });
 
 function showLoading() {
     uploadSection.style.display = 'none';
     dashboardSection.style.display = 'none';
+    if (leadsDashboardSection) {
+        leadsDashboardSection.style.display = 'none';
+    }
     loadingSection.style.display = 'block';
 }
 
 function showUpload() {
     uploadSection.style.display = 'block';
     dashboardSection.style.display = 'none';
+    if (leadsDashboardSection) {
+        leadsDashboardSection.style.display = 'none';
+    }
     loadingSection.style.display = 'none';
     
     // Hide back button when on upload screen
@@ -49,6 +87,9 @@ function showDashboard() {
     uploadSection.style.display = 'none';
     loadingSection.style.display = 'none';
     dashboardSection.style.display = 'block';
+    if (leadsDashboardSection) {
+        leadsDashboardSection.style.display = 'none';
+    }
     
     filteredData = currentData; // Initialize filtered data
     populateFilters();
@@ -66,9 +107,30 @@ function showDashboard() {
     }
 }
 
+function showLeadsDashboard() {
+    if (!currentLeadsData || !leadsDashboardSection) return;
+    
+    uploadSection.style.display = 'none';
+    dashboardSection.style.display = 'none';
+    loadingSection.style.display = 'none';
+    leadsDashboardSection.style.display = 'block';
+    
+    filteredLeadsData = currentLeadsData;
+    renderLeadsDashboard();
+    
+    leadsDashboardSection.classList.add('fade-in');
+    
+    const backBtn = document.getElementById('backToStartBtn');
+    if (backBtn) {
+        backBtn.style.display = 'block';
+    }
+}
+
 function backToStart() {
     currentData = null;
     filteredData = null;
+    currentLeadsData = null;
+    filteredLeadsData = null;
     showUpload();
 }
 
@@ -198,6 +260,275 @@ function createKPICard(title, value, icon, color) {
     `;
     
     return card;
+}
+
+function renderLeadsDashboard() {
+    if (!filteredLeadsData) return;
+    
+    renderLeadsKPIs();
+    renderLeadCharts();
+    renderLeadDistributions();
+    renderLeadRecentTable();
+    renderLeadsTable();
+}
+
+function renderLeadsKPIs() {
+    if (!leadsKpisGrid || !filteredLeadsData) return;
+    
+    const kpis = filteredLeadsData.kpis || {};
+    leadsKpisGrid.innerHTML = '';
+    
+    if (kpis.total_leads !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Total de Leads',
+                kpis.total_leads.toLocaleString(),
+                'fas fa-users',
+                '#10B981'
+            )
+        );
+    }
+    
+    if (kpis.leads_last_30_days !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Entradas (30 dias)',
+                kpis.leads_last_30_days.toLocaleString(),
+                'fas fa-calendar-plus',
+                '#3B82F6'
+            )
+        );
+    }
+    
+    if (kpis.leads_active !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Leads em Aberto',
+                kpis.leads_active.toLocaleString(),
+                'fas fa-hourglass-half',
+                '#F97316'
+            )
+        );
+    }
+    
+    if (kpis.leads_won !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Leads Convertidos',
+                kpis.leads_won.toLocaleString(),
+                'fas fa-trophy',
+                '#8B5CF6'
+            )
+        );
+    }
+    
+    if (kpis.leads_lost !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Leads Perdidos',
+                kpis.leads_lost.toLocaleString(),
+                'fas fa-user-slash',
+                '#EF4444'
+            )
+        );
+    }
+    
+    if (kpis.conversion_rate !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Taxa de Conversão',
+                `${kpis.conversion_rate.toFixed(1)}%`,
+                'fas fa-percentage',
+                '#001c54'
+            )
+        );
+    }
+    
+    if (kpis.unique_statuses !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Tipos de Status',
+                kpis.unique_statuses.toLocaleString(),
+                'fas fa-sitemap',
+                '#2374b9'
+            )
+        );
+    }
+    
+    if (kpis.unique_sources !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Fontes Distintas',
+                kpis.unique_sources.toLocaleString(),
+                'fas fa-bullhorn',
+                '#edb125'
+            )
+        );
+    }
+    
+    if (kpis.leads_without_date !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Sem Data',
+                kpis.leads_without_date.toLocaleString(),
+                'fas fa-question-circle',
+                '#6B7280'
+            )
+        );
+    }
+}
+
+function renderLeadCharts() {
+    if (!filteredLeadsData) return;
+    
+    const distributions = filteredLeadsData.distributions || {};
+    
+    if (leadStatusChart) {
+        const statusData = distributions.status || [];
+        leadStatusChart.data.labels = statusData.map(item => item.label);
+        leadStatusChart.data.datasets[0].data = statusData.map(item => item.value);
+        leadStatusChart.update();
+    }
+    
+    if (leadSourceChart) {
+        const sourceData = distributions.source || [];
+        leadSourceChart.data.labels = sourceData.map(item => item.label);
+        leadSourceChart.data.datasets[0].data = sourceData.map(item => item.value);
+        leadSourceChart.update();
+    }
+    
+    if (leadTimelineChart) {
+        const timelineData = filteredLeadsData.timeline || [];
+        leadTimelineChart.data.labels = timelineData.map(item => item.period);
+        leadTimelineChart.data.datasets[0].data = timelineData.map(item => item.leads);
+        leadTimelineChart.update();
+    }
+}
+
+function renderLeadDistributions() {
+    const distributions = filteredLeadsData?.distributions || {};
+    
+    populateDistributionList(leadStatusList, distributions.status, 'Leads');
+    populateDistributionList(leadSourceList, distributions.source, 'Leads');
+    populateDistributionList(leadOwnerList, distributions.owner, 'Leads');
+}
+
+function populateDistributionList(container, items, label) {
+    if (!container) return;
+    
+    if (!items || items.length === 0) {
+        container.innerHTML = '<p class="empty-state">Nenhum dado disponível</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    items.slice(0, 7).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'distribution-item';
+        row.innerHTML = `
+            <span class="distribution-label">${item.label || 'N/A'}</span>
+            <span class="distribution-value">${(item.value || 0).toLocaleString()} ${label}</span>
+        `;
+        container.appendChild(row);
+    });
+}
+
+function renderLeadRecentTable() {
+    if (!leadsRecentHead || !leadsRecentBody) return;
+    
+    const recentData = filteredLeadsData?.recent_leads || [];
+    
+    leadsRecentHead.innerHTML = '';
+    leadsRecentBody.innerHTML = '';
+    
+    if (!recentData.length) {
+        leadsRecentBody.innerHTML = '<tr><td>Nenhum dado recente disponível</td></tr>';
+        return;
+    }
+    
+    const headers = Object.keys(recentData[0]);
+    const headerRow = document.createElement('tr');
+    headers.forEach(header => {
+        const th = document.createElement('th');
+        th.textContent = header;
+        headerRow.appendChild(th);
+    });
+    leadsRecentHead.appendChild(headerRow);
+    
+    recentData.forEach(row => {
+        const tr = document.createElement('tr');
+        headers.forEach(header => {
+            const td = document.createElement('td');
+            const value = row[header];
+            td.textContent = value !== null && value !== undefined ? value : '';
+            tr.appendChild(td);
+        });
+        leadsRecentBody.appendChild(tr);
+    });
+}
+
+function renderLeadsTable() {
+    if (!leadsTableHead || !leadsTableBody || !filteredLeadsData) return;
+    
+    const data = filteredLeadsData.raw_data || [];
+    const columns = filteredLeadsData.columns || [];
+    
+    leadsTableHead.innerHTML = '';
+    leadsTableBody.innerHTML = '';
+    
+    if (!data.length || !columns.length) {
+        leadsTableBody.innerHTML = '<tr><td>Nenhum dado encontrado</td></tr>';
+        return;
+    }
+    
+    const headerRow = document.createElement('tr');
+    columns.forEach(column => {
+        const th = document.createElement('th');
+        th.textContent = column;
+        headerRow.appendChild(th);
+    });
+    leadsTableHead.appendChild(headerRow);
+    
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+        columns.forEach(column => {
+            const td = document.createElement('td');
+            const cellValue = row[column];
+            td.textContent = cellValue !== null && cellValue !== undefined ? cellValue : '';
+            tr.appendChild(td);
+        });
+        leadsTableBody.appendChild(tr);
+    });
+    
+    filterLeadsTable();
+}
+
+function filterLeadsTable() {
+    if (!leadsTableBody) return;
+    
+    const searchTerm = (leadSearchInput?.value || '').toLowerCase();
+    const maxRows = leadRowsSelect ? leadRowsSelect.value : 'all';
+    const rows = leadsTableBody.querySelectorAll('tr');
+    
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const isVisible = !searchTerm || text.includes(searchTerm);
+        
+        if (isVisible && (maxRows === 'all' || visibleCount < parseInt(maxRows, 10))) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function exportLeadChart(chartType) {
+    console.log('Exporting lead chart:', chartType);
+    alert('Exportação de gráficos de leads estará disponível em breve!');
 }
 
 // Charts rendering
@@ -497,6 +828,132 @@ function initializeCharts() {
             }
         }
     });
+
+    const leadStatusCtx = document.getElementById('leadStatusChart');
+    if (leadStatusCtx) {
+        leadStatusChart = new Chart(leadStatusCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [
+                        '#001c54',
+                        '#2374b9',
+                        '#edb125',
+                        '#de5e36',
+                        '#10B981',
+                        '#8B5CF6',
+                        '#6B7280'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    const leadSourceCtx = document.getElementById('leadSourceChart');
+    if (leadSourceCtx) {
+        leadSourceChart = new Chart(leadSourceCtx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Leads',
+                    data: [],
+                    backgroundColor: 'rgba(0, 28, 84, 0.85)',
+                    borderColor: '#001c54',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const leadTimelineCtx = document.getElementById('leadTimelineChart');
+    if (leadTimelineCtx) {
+        leadTimelineChart = new Chart(leadTimelineCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Leads',
+                    data: [],
+                    borderColor: '#edb125',
+                    backgroundColor: 'rgba(237, 177, 37, 0.15)',
+                    borderWidth: 3,
+                    tension: 0.35,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 function renderCharts() {
@@ -1173,6 +1630,29 @@ function initializeAutoUpload() {
     if (googleAdsUploadBtn) {
         googleAdsUploadBtn.addEventListener('click', handleGoogleAdsUpload);
     }
+    
+    if (autoLeadsUploadBtn) {
+        autoLeadsUploadBtn.addEventListener('click', handleLeadsAutoUpload);
+    }
+}
+
+function initializeLeadsUpload() {
+    const leadsUploadBtn = document.getElementById('leadsUploadBtn');
+    
+    if (leadsUploadBtn && leadsFileInput) {
+        leadsUploadBtn.addEventListener('click', () => leadsFileInput.click());
+        leadsFileInput.addEventListener('change', handleLeadsFileUpload);
+    }
+}
+
+function initializeLeadControls() {
+    if (leadSearchInput) {
+        leadSearchInput.addEventListener('input', filterLeadsTable);
+    }
+    
+    if (leadRowsSelect) {
+        leadRowsSelect.addEventListener('change', filterLeadsTable);
+    }
 }
 
 async function handleAutoUpload() {
@@ -1260,6 +1740,80 @@ async function handleGoogleAdsUpload() {
         // Restore button state
         googleAdsUploadBtn.innerHTML = originalText;
         googleAdsUploadBtn.disabled = false;
+    }
+}
+
+async function handleLeadsAutoUpload() {
+    if (!autoLeadsUploadBtn) return;
+    const originalText = autoLeadsUploadBtn.innerHTML;
+    
+    try {
+        autoLeadsUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
+        autoLeadsUploadBtn.disabled = true;
+        
+        const response = await fetch('/auto-upload-leads', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        console.log('Response from auto-upload-leads:', result);
+        
+        if (result.success) {
+            currentLeadsData = result.data;
+            filteredLeadsData = currentLeadsData;
+            showLeadsDashboard();
+            showNotification(result.message || 'Leads carregados automaticamente do Google Drive!', 'success');
+        } else {
+            showNotification(result.error || 'Erro ao carregar leads automaticamente', 'error');
+        }
+    } catch (error) {
+        console.error('Erro no auto upload de leads:', error);
+        showNotification('Erro de conexão ao carregar leads automaticamente', 'error');
+    } finally {
+        autoLeadsUploadBtn.innerHTML = originalText;
+        autoLeadsUploadBtn.disabled = false;
+    }
+}
+
+async function handleLeadsFileUpload(event) {
+    const files = event.target.files;
+    if (!files || !files.length) return;
+    
+    const file = files[0];
+    showLoading();
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/upload-leads', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        console.log('Response from leads upload:', result);
+        
+        if (result.success) {
+            currentLeadsData = result.data;
+            filteredLeadsData = currentLeadsData;
+            showLeadsDashboard();
+            showNotification(result.message || 'Dashboard de leads atualizado com sucesso!', 'success');
+        } else {
+            showUpload();
+            showNotification(result.error || 'Erro ao processar planilha de leads', 'error');
+        }
+    } catch (error) {
+        console.error('Erro no upload de leads:', error);
+        showUpload();
+        showNotification('Erro de conexão ao enviar planilha de leads', 'error');
+    } finally {
+        if (leadsFileInput) {
+            leadsFileInput.value = '';
+        }
     }
 }
 

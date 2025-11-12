@@ -1,3 +1,37 @@
+def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
+    """
+    Lê planilha de leads procurando automaticamente a aba mais completa.
+    Retorna DataFrame e nome da aba utilizada (ou None).
+    """
+    file_like = io.BytesIO(file_bytes)
+    lower_filename = filename.lower()
+    
+    if lower_filename.endswith('.csv'):
+        file_like.seek(0)
+        return pd.read_csv(file_like), None
+    
+    try:
+        file_like.seek(0)
+        sheets_dict = pd.read_excel(file_like, sheet_name=None)
+        
+        valid_sheets = {}
+        for sheet_name, sheet_df in sheets_dict.items():
+            cleaned_df = sheet_df.dropna(how='all')
+            print(f"[LEADS] Aba '{sheet_name}' -> linhas: {cleaned_df.shape[0]}, colunas: {cleaned_df.shape[1]}")
+            if cleaned_df.shape[0] > 0 and cleaned_df.shape[1] > 0:
+                valid_sheets[sheet_name] = cleaned_df
+        
+        if not valid_sheets:
+            raise ValueError("Nenhuma aba com dados foi encontrada")
+        
+        # Seleciona a aba com maior número de linhas
+        selected_sheet, selected_df = max(valid_sheets.items(), key=lambda item: item[1].shape[0])
+        selected_df = selected_df.reset_index(drop=True)
+        return selected_df, selected_sheet
+    except Exception:
+        file_like.seek(0)
+        df = pd.read_excel(file_like)
+        return df, None
 from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
 import numpy as np
@@ -11,7 +45,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
+app.jinja_env.cache = {}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 def load_drive_credentials():
     """Carrega credenciais do Google Drive"""
@@ -349,6 +387,209 @@ def detect_leads_columns(df):
                 break
     
     return leads_cols
+
+def detect_lead_date_column(df):
+    """Detecta coluna de data em planilhas de leads"""
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in ['data', 'date', 'criado', 'cadastro', 'entrada', 'created']):
+            return col
+    return None
+
+def detect_lead_status_column(df):
+    """Detecta coluna de status em planilhas de leads"""
+    status_keywords = ['status', 'etapa', 'stage', 'situação', 'situacao', 'fase', 'pipeline', 'andamento']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in status_keywords):
+            return col
+    return None
+
+def detect_lead_source_column(df):
+    """Detecta coluna de origem em planilhas de leads"""
+    source_keywords = ['origem', 'source', 'fonte', 'canal', 'utm', 'campanha', 'midia', 'mídia', 'procedência']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in source_keywords):
+            return col
+    return None
+
+def detect_lead_owner_column(df):
+    """Detecta coluna de responsável em planilhas de leads"""
+    owner_keywords = ['respons', 'consultor', 'vendedor', 'owner', 'account', 'atendente', 'agente', 'seller', 'executivo']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in owner_keywords):
+            return col
+    return None
+
+def detect_lead_name_column(df):
+    """Detecta coluna de nome do lead"""
+    name_keywords = ['nome', 'name', 'lead', 'contato', 'cliente']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in name_keywords):
+            return col
+    return df.columns[0] if len(df.columns) > 0 else None
+
+def analyze_leads_dataframe(df):
+    """Gera análises a partir de uma planilha de leads"""
+    df = df.copy()
+    df.columns = [str(col).strip() for col in df.columns]
+    
+    date_col = detect_lead_date_column(df)
+    status_col = detect_lead_status_column(df)
+    source_col = detect_lead_source_column(df)
+    owner_col = detect_lead_owner_column(df)
+    name_col = detect_lead_name_column(df)
+    
+    if date_col:
+        df['_lead_date_dt'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
+        if 'Data_Lead' not in df.columns:
+            df['Data_Lead'] = df[date_col].apply(parse_brazilian_date)
+    else:
+        df['_lead_date_dt'] = pd.NaT
+    
+    total_leads = int(len(df))
+    
+    leads_last_30_days = 0
+    leads_without_date = total_leads
+    monthly_trend = []
+    timeline = []
+    
+    if date_col:
+        now = datetime.now()
+        last_30 = now - timedelta(days=30)
+        valid_dates = df['_lead_date_dt'].dropna()
+        leads_last_30_days = int(((df['_lead_date_dt'] >= last_30) & (df['_lead_date_dt'] <= now)).sum())
+        leads_without_date = int(df['_lead_date_dt'].isna().sum())
+        
+        if not valid_dates.empty:
+            monthly_counts = df.loc[df['_lead_date_dt'].notna(), '_lead_date_dt'].dt.to_period('M').value_counts().sort_index()
+            timeline = [
+                {
+                    'period': period.strftime('%m/%Y'),
+                    'leads': int(count)
+                }
+                for period, count in monthly_counts.items()
+            ]
+    
+    status_distribution = []
+    source_distribution = []
+    owner_distribution = []
+    leads_won = 0
+    leads_lost = 0
+    conversion_rate = 0.0
+    
+    if status_col:
+        status_series = df[status_col].fillna('Sem Status').astype(str).str.strip()
+        status_counts = status_series.value_counts().head(15)
+        status_distribution = [
+            {'label': status, 'value': int(count)}
+            for status, count in status_counts.items()
+        ]
+        
+        status_lower = status_series.str.lower()
+        won_keywords = ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
+        lost_keywords = ['perdido', 'lost', 'cancelado', 'desistiu', 'no show', 'no-show', 'falhou']
+        
+        leads_won = int(status_lower.apply(lambda x: any(keyword in x for keyword in won_keywords)).sum())
+        leads_lost = int(status_lower.apply(lambda x: any(keyword in x for keyword in lost_keywords)).sum())
+        conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
+    
+    if source_col:
+        source_series = df[source_col].fillna('Sem Origem').astype(str).str.strip()
+        source_counts = source_series.value_counts().head(15)
+        source_distribution = [
+            {'label': source, 'value': int(count)}
+            for source, count in source_counts.items()
+        ]
+    
+    if owner_col:
+        owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip()
+        owner_counts = owner_series.value_counts().head(15)
+        owner_distribution = [
+            {'label': owner, 'value': int(count)}
+            for owner, count in owner_counts.items()
+        ]
+    
+    unique_statuses = len(df[status_col].dropna().unique()) if status_col else 0
+    unique_sources = len(df[source_col].dropna().unique()) if source_col else 0
+    
+    leads_active = total_leads - leads_won - leads_lost
+    leads_active = leads_active if leads_active >= 0 else 0
+    
+    recent_preview = df.copy()
+    if date_col and df['_lead_date_dt'].notna().any():
+        recent_preview = recent_preview.sort_values(by=['_lead_date_dt'], ascending=False)
+    else:
+        recent_preview = recent_preview.reset_index(drop=True)
+    
+    preview_columns = []
+    rename_map = {}
+    
+    if name_col:
+        preview_columns.append(name_col)
+        rename_map[name_col] = 'Lead'
+    if status_col and status_col not in preview_columns:
+        preview_columns.append(status_col)
+        rename_map[status_col] = 'Status'
+    if source_col and source_col not in preview_columns:
+        preview_columns.append(source_col)
+        rename_map[source_col] = 'Origem'
+    if owner_col and owner_col not in preview_columns:
+        preview_columns.append(owner_col)
+        rename_map[owner_col] = 'Responsável'
+    if date_col and date_col not in preview_columns:
+        preview_columns.append(date_col)
+        rename_map[date_col] = 'Data'
+    
+    if preview_columns:
+        recent_preview = recent_preview[preview_columns].head(20).rename(columns=rename_map)
+    else:
+        recent_preview = recent_preview.head(20)
+    
+    insights = {
+        'top_status': status_distribution[0] if status_distribution else None,
+        'top_source': source_distribution[0] if source_distribution else None,
+        'top_owner': owner_distribution[0] if owner_distribution else None
+    }
+    
+    kpis = {
+        'total_leads': total_leads,
+        'leads_last_30_days': leads_last_30_days,
+        'leads_without_date': leads_without_date,
+        'unique_statuses': unique_statuses,
+        'unique_sources': unique_sources,
+        'leads_won': leads_won,
+        'leads_lost': leads_lost,
+        'leads_active': leads_active,
+        'conversion_rate': conversion_rate
+    }
+    
+    distributions = {
+        'status': status_distribution,
+        'source': source_distribution,
+        'owner': owner_distribution
+    }
+    
+    df = df.drop(columns=['_lead_date_dt'])
+    
+    return {
+        'columns': list(df.columns),
+        'total_rows': total_leads,
+        'date_column': date_col,
+        'status_column': status_col,
+        'source_column': source_col,
+        'owner_column': owner_col,
+        'name_column': name_col,
+        'kpis': kpis,
+        'distributions': distributions,
+        'timeline': timeline,
+        'insights': insights,
+        'recent_leads': clean_dataframe_for_json(recent_preview),
+        'raw_data': clean_dataframe_for_json(df)
+    }
 
 @app.route('/')
 def index():
@@ -1069,5 +1310,73 @@ def download_file(filename):
 def favicon():
     return send_file('static/favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+@app.route('/auto-upload-leads')
+def auto_upload_leads():
+    try:
+        file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
+        
+        credentials = load_drive_credentials()
+        if not credentials:
+            return jsonify({'error': 'Credenciais do Google Drive não encontradas'}), 500
+        
+        file_content, file_name = download_file_from_drive(file_id, credentials)
+        if not file_content:
+            return jsonify({'error': 'Erro ao baixar arquivo de leads do Google Drive'}), 500
+        
+        try:
+            df, sheet_name = load_leads_dataframe_from_bytes(file_content, file_name)
+            
+            analysis = analyze_leads_dataframe(df)
+            analysis['source_sheet'] = sheet_name
+            analysis['file_name'] = file_name
+            
+            return jsonify({
+                'success': True,
+                'message': f'Planilha de leads {file_name} carregada automaticamente!',
+                'sheet_name': sheet_name,
+                'data': analysis
+            })
+        except Exception as e:
+            print(f"Erro ao processar leads: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Erro ao processar planilha de leads: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Erro no upload automático de leads: {str(e)}")
+        return jsonify({'error': f'Erro no upload automático de leads: {str(e)}'}), 500
+
+@app.route('/upload-leads', methods=['POST'])
+def upload_leads():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
+        
+        if file.filename.endswith('.csv'):
+            file_bytes = file.read()
+            df, sheet_name = load_leads_dataframe_from_bytes(file_bytes, file.filename)
+        else:
+            file_bytes = file.read()
+            df, sheet_name = load_leads_dataframe_from_bytes(file_bytes, file.filename)
+        
+        analysis = analyze_leads_dataframe(df)
+        analysis['source_sheet'] = sheet_name
+        analysis['file_name'] = file.filename
+        
+        return jsonify({
+            'success': True,
+            'message': 'Planilha de leads processada com sucesso!',
+            'data': analysis
+        })
+    except Exception as e:
+        print(f"Erro ao processar planilha de leads: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erro ao processar planilha de leads: {str(e)}'}), 500
+
 if __name__ == '__main__':
+    print(f"Templates path: {app.template_folder}")
     app.run(debug=True, host='0.0.0.0', port=5000)
