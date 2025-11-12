@@ -32,15 +32,14 @@ def _make_unique_headers(headers):
     return normalized
 
 
-def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials):
+def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials, priority_names=None):
     """Carrega todas as abas diretamente da API do Google Sheets."""
     sheets_service = build('sheets', 'v4', credentials=credentials)
     metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
 
-    frames = []
+    priority_names = [name.strip().lower() for name in (priority_names or []) if name.strip()]
+    frames_map = {}
     sheet_stats = []
-    primary_sheet = None
-    max_rows = -1
 
     for sheet in metadata.get('sheets', []):
         properties = sheet.get('properties', {})
@@ -86,33 +85,49 @@ def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials):
         if rows == 0 or cols == 0:
             continue
 
-        frames.append(cleaned_df)
-        if rows > max_rows:
-            max_rows = rows
-            primary_sheet = title
+        frames_map[title] = cleaned_df
 
-    if not frames:
+    if not frames_map:
         raise ValueError("Nenhuma aba com dados relevantes via Sheets API")
 
+    ordered_titles = []
+    matched_priority = []
+    for name in priority_names:
+        match = next((title for title in frames_map.keys() if title.lower() == name), None)
+        if match and match not in ordered_titles:
+            ordered_titles.append(match)
+            matched_priority.append(match)
+
+    for title in frames_map.keys():
+        if title not in ordered_titles:
+            ordered_titles.append(title)
+
+    frames = [frames_map[title] for title in ordered_titles]
     combined_df = pd.concat(frames, ignore_index=True, sort=False)
     combined_df = combined_df.dropna(how='all').reset_index(drop=True)
     combined_rows = int(combined_df.shape[0])
+
+    primary_sheet = matched_priority[0] if matched_priority else ordered_titles[0]
 
     return combined_df, {
         'primary_sheet': primary_sheet,
         'sheet_stats': sheet_stats,
         'sheet_count': len(sheet_stats),
         'combined_rows': combined_rows,
-        'source': 'google_sheets_api'
+        'source': 'google_sheets_api',
+        'matched_priority': matched_priority,
+        'ordered_sheets': ordered_titles
     }
 
 
-def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
+def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx', priority_names=None):
     """Lê planilhas locais combinando todas as abas com dados válidos."""
     file_like = io.BytesIO(file_bytes)
     lower_filename = filename.lower()
+    priority_names = [name.strip().lower() for name in (priority_names or []) if name.strip()]
 
     sheet_stats = []
+    frames_map = {}
 
     # CSV
     if lower_filename.endswith('.csv'):
@@ -129,16 +144,14 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
             'sheet_stats': sheet_stats,
             'sheet_count': 1,
             'combined_rows': int(df.dropna(how='all').shape[0]),
-            'source': 'csv_upload'
+            'source': 'csv_upload',
+            'matched_priority': ['CSV'] if 'csv' in priority_names else [],
+            'ordered_sheets': ['CSV']
         }
 
     try:
         file_like.seek(0)
         sheets_dict = pd.read_excel(file_like, sheet_name=None, dtype=str)
-
-        valid_frames = []
-        primary_sheet = None
-        max_rows = -1
 
         for sheet_name, sheet_df in sheets_dict.items():
             cleaned_df = sheet_df.dropna(how='all').dropna(axis=1, how='all')
@@ -152,24 +165,38 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
             if rows == 0 or cols == 0:
                 continue
 
-            valid_frames.append(cleaned_df)
-            if rows > max_rows:
-                max_rows = rows
-                primary_sheet = sheet_name
+            frames_map[sheet_name] = cleaned_df
 
-        if not valid_frames:
+        if not frames_map:
             raise ValueError("Nenhuma aba com dados foi encontrada")
 
-        combined_df = pd.concat(valid_frames, ignore_index=True, sort=False)
+        ordered_titles = []
+        matched_priority = []
+        for name in priority_names:
+            match = next((title for title in frames_map.keys() if title.lower() == name), None)
+            if match and match not in ordered_titles:
+                ordered_titles.append(match)
+                matched_priority.append(match)
+
+        for title in frames_map.keys():
+            if title not in ordered_titles:
+                ordered_titles.append(title)
+
+        frames = [frames_map[title] for title in ordered_titles]
+        combined_df = pd.concat(frames, ignore_index=True, sort=False)
         combined_df = combined_df.dropna(how='all').reset_index(drop=True)
         combined_rows = int(combined_df.shape[0])
+
+        primary_sheet = matched_priority[0] if matched_priority else ordered_titles[0]
 
         return combined_df, {
             'primary_sheet': primary_sheet,
             'sheet_stats': sheet_stats,
             'sheet_count': len(sheet_stats),
             'combined_rows': combined_rows,
-            'source': 'xlsx_export'
+            'source': 'xlsx_export',
+            'matched_priority': matched_priority,
+            'ordered_sheets': ordered_titles
         }
     except Exception as exc:
         print(f"[LEADS] Falha ao combinar abas ({exc}), tentando leitura simples.")
@@ -183,7 +210,9 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx'):
             'sheet_stats': sheet_stats,
             'sheet_count': len(sheet_stats),
             'combined_rows': int(df.shape[0]),
-            'source': 'xlsx_export_fallback'
+            'source': 'xlsx_export_fallback',
+            'matched_priority': [],
+            'ordered_sheets': ['Sheet1']
         }
 
 def load_drive_credentials():
@@ -1449,6 +1478,8 @@ def favicon():
 def auto_upload_leads():
     try:
         file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
+        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', '')
+        priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
         credentials = load_drive_credentials()
         if not credentials:
@@ -1459,7 +1490,7 @@ def auto_upload_leads():
         file_name = None
 
         try:
-            df, sheet_info = load_leads_dataframe_from_google_sheets(file_id, credentials)
+            df, sheet_info = load_leads_dataframe_from_google_sheets(file_id, credentials, priority_names)
             file_name = sheet_info.get('primary_sheet', 'Google Sheet')
             print(f"[LEADS] Carregado via Sheets API com {sheet_info.get('combined_rows', len(df))} linhas." )
         except Exception as sheet_error:
@@ -1470,10 +1501,11 @@ def auto_upload_leads():
             if not file_content:
                 return jsonify({'error': 'Erro ao baixar arquivo de leads do Google Drive'}), 500
 
-            df, sheet_info = load_leads_dataframe_from_bytes(file_content, file_name)
+            df, sheet_info = load_leads_dataframe_from_bytes(file_content, file_name, priority_names)
 
         sheet_info = sheet_info or {}
         sheet_info['file_name'] = file_name
+        sheet_info['priority_used'] = priority_names
 
         analysis = analyze_leads_dataframe(df)
         analysis['sheet_info'] = sheet_info
@@ -1499,11 +1531,15 @@ def upload_leads():
         if file.filename == '':
             return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
 
+        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', '')
+        priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
+
         file_bytes = file.read()
-        df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename)
+        df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename, priority_names)
         sheet_info = sheet_info or {}
         sheet_info.setdefault('source', 'manual_upload')
         sheet_info['file_name'] = file.filename
+        sheet_info['priority_used'] = priority_names
 
         analysis = analyze_leads_dataframe(df)
         analysis['sheet_info'] = sheet_info

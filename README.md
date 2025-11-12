@@ -89,6 +89,7 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 - Gráficos de timeline, status e fontes com Chart.js
 - Tabelas com últimos leads atualizados e base completa com busca e paginação
 - Metadados exibindo resumo da planilha (quantidade de abas e registros)
+- Prioridade configurável de abas via `LEADS_SHEETS_PRIORITY` (lista separada por vírgula)
 
 ### Integração Google Drive
 - Download automático de planilhas
