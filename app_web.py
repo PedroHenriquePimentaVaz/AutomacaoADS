@@ -614,6 +614,9 @@ def analyze_leads_dataframe(df):
             text = str(value).strip()
             return text if text else 'organico'
         df[source_col] = df[source_col].apply(_normalize_source)
+        df[source_col] = df[source_col].astype(str).str.strip()
+        df[source_col] = df[source_col].replace({'': 'organico', 'nan': 'organico', 'None': 'organico', '<NA>': 'organico'})
+        df[source_col] = df[source_col].fillna('organico')
 
     if date_col:
         df['_lead_date_dt'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
