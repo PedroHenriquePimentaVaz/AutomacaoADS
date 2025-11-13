@@ -607,6 +607,14 @@ def analyze_leads_dataframe(df):
     owner_col = detect_lead_owner_column(df)
     name_col = detect_lead_name_column(df)
     
+    if source_col:
+        def _normalize_source(value):
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return 'organico'
+            text = str(value).strip()
+            return text if text else 'organico'
+        df[source_col] = df[source_col].apply(_normalize_source)
+
     if date_col:
         df['_lead_date_dt'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
         if 'Data_Lead' not in df.columns:
@@ -662,7 +670,7 @@ def analyze_leads_dataframe(df):
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
     
     if source_col:
-        source_series = df[source_col].fillna('Sem Origem').astype(str).str.strip()
+        source_series = df[source_col].astype(str).str.strip()
         source_counts = source_series.value_counts().head(15)
         source_distribution = [
             {'label': source, 'value': int(count)}
@@ -738,7 +746,9 @@ def analyze_leads_dataframe(df):
     }
     
     df = df.drop(columns=['_lead_date_dt'])
-    
+    if source_col:
+        df[source_col] = df[source_col].replace(r'^\s*$', 'organico', regex=True).fillna('organico')
+
     return {
         'columns': list(df.columns),
         'total_rows': total_leads,
@@ -1478,11 +1488,8 @@ def favicon():
 def auto_upload_leads():
     try:
         file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
-        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', '').strip()
-        if priority_env:
-            priority_names = [name.strip() for name in priority_env.split(',') if name.strip()]
-        else:
-            priority_names = ['Leads Franquia', 'Leads Be Honest']
+        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', 'Leads Be Honest,Leads Franquia')
+        priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
         credentials = load_drive_credentials()
         if not credentials:
