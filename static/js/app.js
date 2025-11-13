@@ -231,6 +231,26 @@ function renderKPIs() {
         );
         kpisGrid.appendChild(dateCard);
     }
+
+    if (kpis.tag_leads !== undefined) {
+        const tagLeadsCard = createKPICard(
+            'Leads (tag LEAD)',
+            kpis.tag_leads.toLocaleString(),
+            'fas fa-user-plus',
+            '#0EA5E9'
+        );
+        kpisGrid.appendChild(tagLeadsCard);
+    }
+
+    if (kpis.tag_mqls !== undefined) {
+        const tagMQLsCard = createKPICard(
+            'MQLs (tag MQL)',
+            kpis.tag_mqls.toLocaleString(),
+            'fas fa-user-check',
+            '#10B981'
+        );
+        kpisGrid.appendChild(tagMQLsCard);
+    }
 }
 
 function createKPICard(title, value, icon, color) {

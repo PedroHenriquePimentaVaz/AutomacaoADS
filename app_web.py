@@ -663,6 +663,10 @@ def analyze_leads_dataframe(df):
             {'label': status, 'value': int(count)}
             for status, count in status_counts.items()
         ]
+
+        status_upper = status_series.str.upper()
+        tag_leads = int((status_upper == 'LEAD').sum())
+        tag_mqls = int((status_upper == 'MQL').sum())
         
         status_lower = status_series.str.lower()
         won_keywords = ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
@@ -671,15 +675,13 @@ def analyze_leads_dataframe(df):
         leads_won = int(status_lower.apply(lambda x: any(keyword in x for keyword in won_keywords)).sum())
         leads_lost = int(status_lower.apply(lambda x: any(keyword in x for keyword in lost_keywords)).sum())
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
-    
+    else:
+        tag_leads = 0
+        tag_mqls = 0
+
     if source_col:
         source_series = df[source_col].astype(str).str.strip()
-        source_counts = source_series.value_counts().head(15)
-        source_distribution = [
-            {'label': source, 'value': int(count)}
-            for source, count in source_counts.items()
-        ]
-    
+
     if owner_col:
         owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip()
         owner_counts = owner_series.value_counts().head(15)
@@ -739,7 +741,9 @@ def analyze_leads_dataframe(df):
         'leads_won': leads_won,
         'leads_lost': leads_lost,
         'leads_active': leads_active,
-        'conversion_rate': conversion_rate
+        'conversion_rate': conversion_rate,
+        'tag_leads': tag_leads,
+        'tag_mqls': tag_mqls
     }
     
     distributions = {
