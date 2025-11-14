@@ -562,7 +562,7 @@ def detect_lead_date_column(df):
 
 def detect_lead_status_column(df):
     """Detecta coluna de status em planilhas de leads"""
-    status_keywords = ['status', 'etapa', 'stage', 'situação', 'situacao', 'fase', 'pipeline', 'andamento']
+    status_keywords = ['status', 'etapa', 'stage', 'situação', 'situacao', 'fase', 'pipeline', 'andamento', 'mql']
     for col in df.columns:
         col_lower = str(col).lower().strip()
         if any(keyword in col_lower for keyword in status_keywords):
@@ -655,6 +655,21 @@ def analyze_leads_dataframe(df):
     leads_won = 0
     leads_lost = 0
     conversion_rate = 0.0
+    tag_leads = 0
+    tag_mqls = 0
+    
+    # Detecta coluna MQL? especificamente
+    mql_col = None
+    for col in df.columns:
+        if str(col).strip() == 'MQL?':
+            mql_col = col
+            break
+    
+    if mql_col:
+        mql_series = df[mql_col].fillna('').astype(str).str.strip()
+        mql_upper = mql_series.str.upper()
+        tag_leads = int((mql_upper == 'LEAD').sum())
+        tag_mqls = int((mql_upper == 'MQL').sum())
     
     if status_col:
         status_series = df[status_col].fillna('Sem Status').astype(str).str.strip()
@@ -663,10 +678,6 @@ def analyze_leads_dataframe(df):
             {'label': status, 'value': int(count)}
             for status, count in status_counts.items()
         ]
-
-        status_upper = status_series.str.upper()
-        tag_leads = int((status_upper == 'LEAD').sum())
-        tag_mqls = int((status_upper == 'MQL').sum())
         
         status_lower = status_series.str.lower()
         won_keywords = ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
@@ -675,9 +686,6 @@ def analyze_leads_dataframe(df):
         leads_won = int(status_lower.apply(lambda x: any(keyword in x for keyword in won_keywords)).sum())
         leads_lost = int(status_lower.apply(lambda x: any(keyword in x for keyword in lost_keywords)).sum())
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
-    else:
-        tag_leads = 0
-        tag_mqls = 0
 
     if source_col:
         source_series = df[source_col].astype(str).str.strip()

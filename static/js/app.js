@@ -386,6 +386,28 @@ function renderLeadsKPIs() {
         );
     }
     
+    if (kpis.tag_leads !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Leads (tag LEAD)',
+                kpis.tag_leads.toLocaleString(),
+                'fas fa-user-plus',
+                '#0EA5E9'
+            )
+        );
+    }
+    
+    if (kpis.tag_mqls !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'MQLs (tag MQL)',
+                kpis.tag_mqls.toLocaleString(),
+                'fas fa-user-check',
+                '#10B981'
+            )
+        );
+    }
+    
     if (kpis.leads_without_date !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
