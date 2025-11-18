@@ -2042,8 +2042,18 @@ function displaySultsData(data) {
     const allLeads = [
         ...(sultsLeads.leads.abertos || []),
         ...(sultsLeads.leads.perdidos || []),
-        ...(sultsLeads.leads.ganhos || [])
+        ...(sultsLeads.leads.ganhos || []),
+        ...(sultsLeads.leads.mql || [])
     ];
+    
+    // Remover duplicatas baseado no ID
+    const leadsMap = new Map();
+    allLeads.forEach(lead => {
+        if (lead.id && !leadsMap.has(lead.id)) {
+            leadsMap.set(lead.id, lead);
+        }
+    });
+    const uniqueLeads = Array.from(leadsMap.values());
     
     console.log('Total de leads processados:', uniqueLeads.length);
     console.log('Leads abertos:', sultsLeads.resumo.abertos);
@@ -2079,16 +2089,17 @@ function displaySultsData(data) {
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
             'Perdidos': sultsLeads.resumo.perdidos,
-            'Ganhos': sultsLeads.resumo.ganhos
+            'Ganhos': sultsLeads.resumo.ganhos,
+            'MQL': totalMQL
         },
         kpis: {
-            total_leads: sultsLeads.resumo.total_leads,
+            total_leads: totalLeads,
             leads_active: sultsLeads.resumo.abertos,
             leads_won: sultsLeads.resumo.ganhos,
             leads_lost: sultsLeads.resumo.perdidos,
-            tag_leads: sultsLeads.resumo.total_leads,
-            tag_mqls: 0,
-            mql_to_lead_rate: 0
+            tag_leads: totalLeads,
+            tag_mqls: totalMQL,
+            mql_to_lead_rate: mqlToLeadRate
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
