@@ -1959,9 +1959,27 @@ function displaySultsData(data) {
             total_leads: data.resumo?.total_leads || 0,
             abertos: data.leads?.abertos?.total || 0,
             perdidos: data.leads?.perdidos?.total || 0,
-            ganhos: data.leads?.ganhos?.total || 0
+            ganhos: data.leads?.ganhos?.total || 0,
+            lojas_ativas: data.resumo?.lojas_ativas || 0,
+            total_empresas: data.resumo?.total_empresas || 0
+        },
+        estatisticas: data.estatisticas || {
+            leads_por_fase: {},
+            leads_por_categoria: {},
+            leads_por_responsavel: {},
+            leads_por_unidade: {},
+            lojas_por_uf: {},
+            lojas_por_cidade: {}
         }
     };
+    
+    // Garantir que todas as propriedades de estatisticas existem
+    if (!sultsLeads.estatisticas.leads_por_fase) sultsLeads.estatisticas.leads_por_fase = {};
+    if (!sultsLeads.estatisticas.leads_por_categoria) sultsLeads.estatisticas.leads_por_categoria = {};
+    if (!sultsLeads.estatisticas.leads_por_responsavel) sultsLeads.estatisticas.leads_por_responsavel = {};
+    if (!sultsLeads.estatisticas.leads_por_unidade) sultsLeads.estatisticas.leads_por_unidade = {};
+    if (!sultsLeads.estatisticas.lojas_por_uf) sultsLeads.estatisticas.lojas_por_uf = {};
+    if (!sultsLeads.estatisticas.lojas_por_cidade) sultsLeads.estatisticas.lojas_por_cidade = {};
     
     // Combinar todos os leads para exibição
     const allLeads = [
