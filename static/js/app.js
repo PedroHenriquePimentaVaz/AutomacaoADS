@@ -732,7 +732,7 @@ function renderLeadsTable() {
     leadsTableBody.innerHTML = '';
     
     if (!leads.length) {
-        leadsTableBody.innerHTML = '<tr><td colspan="8">Nenhum lead encontrado</td></tr>';
+        leadsTableBody.innerHTML = '<tr><td colspan="9">Nenhum lead encontrado</td></tr>';
         return;
     }
     
