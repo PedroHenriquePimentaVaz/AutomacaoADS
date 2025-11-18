@@ -1,5 +1,6 @@
 import requests
 import os
+import base64
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -27,17 +28,30 @@ class SultsAPIClient:
     BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://developer.sults.com.br/api/v1")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
-    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, auth_format: str = 'bearer'):
         self.token = token or self.TOKEN
         self.BASE_URL = base_url or self.BASE_URL
-        # TODO: Ajustar formato de autenticação conforme documentação
-        # Pode ser Bearer, Basic Auth, ou outro formato
+        self.auth_format = auth_format.lower()
+        
+        # Configurar headers base
         self.headers = {
-            'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
+        
+        # Configurar autenticação conforme formato
+        if self.auth_format == 'bearer':
+            self.headers['Authorization'] = f'Bearer {self.token}'
+        elif self.auth_format == 'token':
+            self.headers['Authorization'] = f'Token {self.token}'
+        elif self.auth_format == 'apikey':
+            self.headers['X-API-Key'] = self.token
+        elif self.auth_format == 'header':
+            self.headers['X-Auth-Token'] = self.token
+        else:
+            # Padrão: Bearer Token
+            self.headers['Authorization'] = f'Bearer {self.token}'
     
     @staticmethod
     def test_connection(base_url: str, token: str, endpoint: str = "/chamados") -> Dict:
@@ -66,6 +80,42 @@ class SultsAPIClient:
                 'message': str(e)
             }
     
+    def _try_different_auth_formats(self, endpoint: str) -> Optional[Dict]:
+        """Tenta diferentes formatos de autenticação automaticamente"""
+        auth_formats = ['bearer', 'token', 'apikey', 'header']
+        
+        for auth_format in auth_formats:
+            try:
+                # Criar headers temporários com formato diferente
+                temp_headers = self.headers.copy()
+                temp_headers.pop('Authorization', None)
+                temp_headers.pop('X-API-Key', None)
+                temp_headers.pop('X-Auth-Token', None)
+                
+                if auth_format == 'bearer':
+                    temp_headers['Authorization'] = f'Bearer {self.token}'
+                elif auth_format == 'token':
+                    temp_headers['Authorization'] = f'Token {self.token}'
+                elif auth_format == 'apikey':
+                    temp_headers['X-API-Key'] = self.token
+                elif auth_format == 'header':
+                    temp_headers['X-Auth-Token'] = self.token
+                
+                url = f"{self.BASE_URL}{endpoint}"
+                response = requests.get(url, headers=temp_headers, timeout=10, allow_redirects=False)
+                
+                # Se retornar JSON, esse formato funciona
+                if response.status_code == 200 and 'application/json' in response.headers.get('Content-Type', ''):
+                    print(f"Formato de autenticação funcionando: {auth_format}")
+                    self.auth_format = auth_format
+                    # Atualizar headers do objeto
+                    self.headers = temp_headers
+                    return response.json()
+            except:
+                continue
+        
+        return None
+    
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None) -> Dict:
         """Faz uma requisição HTTP para a API da SULTS"""
         url = f"{self.BASE_URL}{endpoint}"
@@ -86,11 +136,25 @@ class SultsAPIClient:
             if 'application/json' not in content_type:
                 print(f"Aviso: Resposta não é JSON. Content-Type: {content_type}")
                 print(f"Primeiros 200 caracteres da resposta: {response.text[:200]}")
+                
+                # Se retornou HTML, pode ser problema de autenticação - tentar outros formatos
+                if 'text/html' in content_type and response.status_code == 200:
+                    print("Tentando diferentes formatos de autenticação...")
+                    result = self._try_different_auth_formats(endpoint)
+                    if result:
+                        return result
+                
+                # Se ainda não funcionou, retornar erro
+                error_msg = f"Resposta não é JSON válido. Status: {response.status_code}, Content-Type: {content_type}"
+                error_msg += f"\nA API retornou HTML ao invés de JSON. Isso geralmente indica problema de autenticação."
+                error_msg += f"\nVerifique se o token está correto e tem as permissões necessárias."
+                error_msg += f"\nPrimeiros 200 caracteres: {response.text[:200]}"
+                raise Exception(error_msg)
             
             try:
                 return response.json()
             except ValueError as json_error:
-                error_msg = f"Resposta não é JSON válido. Status: {response.status_code}, Content-Type: {content_type}"
+                error_msg = f"Erro ao parsear JSON. Status: {response.status_code}, Content-Type: {content_type}"
                 error_msg += f"\nResposta: {response.text[:500]}"
                 raise Exception(error_msg) from json_error
         except requests.exceptions.HTTPError as e:
