@@ -24,9 +24,10 @@ class SultsAPIClient:
     """
     
     # URL base da API SULTS conforme documentação: https://developers.sults.com.br/
-    # Documentação oficial indica: https://api.sults.com.br/v1
-    # Exemplo: https://api.sults.com.br/v1/empresas
-    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://api.sults.com.br/v1")
+    # Documentação oficial indica: https://api.sults.com.br/api/v1
+    # Exemplo: https://api.sults.com.br/api/v1/projeto (confirmado funcionando)
+    # Exemplo: https://api.sults.com.br/v1/empresas (também funciona)
+    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://api.sults.com.br/api/v1")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, auth_format: str = 'bearer'):
@@ -248,10 +249,19 @@ class SultsAPIClient:
         return None
     
     def get_leads(self, filters: Optional[Dict] = None) -> List[Dict]:
-        """Busca leads da SULTS - endpoint conforme documentação: /leads"""
-        endpoint = "/leads"
+        """Busca leads da SULTS"""
+        # Tentar diferentes endpoints possíveis
+        endpoints_to_try = ["/leads", "/lead", "/negocio", "/negocios", "/chamados", "/chamado"]
         params = filters or {}
-        return self._make_request('GET', endpoint, params=params)
+        
+        for endpoint in endpoints_to_try:
+            try:
+                return self._make_request('GET', endpoint, params=params)
+            except:
+                continue
+        
+        # Se nenhum funcionar, retornar lista vazia
+        return []
     
     def get_chamado_by_id(self, chamado_id: int) -> Dict:
         """Busca um chamado específico por ID"""

@@ -1815,13 +1815,14 @@ def verificar_sults_leads():
         tested_combinations = []
         
         # Tentar combinações conforme documentação oficial: https://developers.sults.com.br/
-        # Base URL oficial: https://api.sults.com.br/v1
+        # Base URL oficial: https://api.sults.com.br/api/v1 (confirmado funcionando com /projeto)
         # Autenticação: Token direto no header Authorization (sem "Bearer")
         priority_combinations = [
-            ("https://api.sults.com.br/v1", "/chamados", "token"),
-            ("https://api.sults.com.br/v1", "/leads", "token"),
-            ("https://api.sults.com.br/v1", "/empresas", "token"),
+            ("https://api.sults.com.br/api/v1", "/negocio", "token"),
+            ("https://api.sults.com.br/api/v1", "/negocios", "token"),
+            ("https://api.sults.com.br/api/v1", "/chamado", "token"),
             ("https://api.sults.com.br/api/v1", "/chamados", "token"),
+            ("https://api.sults.com.br/api/v1", "/lead", "token"),
             ("https://api.sults.com.br/api/v1", "/leads", "token"),
         ]
         
