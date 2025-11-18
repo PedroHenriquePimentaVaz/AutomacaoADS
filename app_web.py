@@ -1821,6 +1821,21 @@ def verificar_sults_leads():
             # Buscar projetos (endpoint confirmado funcionando)
             projetos = client.get_projetos()
             
+            # Filtrar apenas projetos de franqueados
+            # Projetos de franqueados têm funil com nome "Franqueados" ou nome contém "Franqueado"
+            projetos_franqueados = []
+            for projeto in projetos:
+                etapa = projeto.get('etapa', {})
+                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                projeto_nome = projeto.get('nome', '').lower()
+                
+                # Filtrar apenas projetos do funil "Franqueados" ou que tenham "franqueado" no nome
+                if 'franqueado' in funil_nome or 'franqueado' in projeto_nome:
+                    projetos_franqueados.append(projeto)
+            
+            projetos = projetos_franqueados
+            
             # Buscar empresas (endpoint confirmado funcionando)
             empresas = []
             try:
