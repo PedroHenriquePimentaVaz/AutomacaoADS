@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeAutoUpload();
     initializeLeadsUpload();
     initializeLeadControls();
+    initializeSultsData();
 });
 
 function showLoading() {
@@ -1662,6 +1663,94 @@ function initializeLeadControls() {
     if (leadRowsSelect) {
         leadRowsSelect.addEventListener('change', filterLeadsTable);
     }
+}
+
+function initializeSultsData() {
+    const sultsDataBtn = document.getElementById('sultsDataBtn');
+    if (sultsDataBtn) {
+        sultsDataBtn.addEventListener('click', handleSultsDataLoad);
+    }
+}
+
+async function handleSultsDataLoad() {
+    showLoading();
+    
+    try {
+        const response = await fetch('/api/sults/verificar-leads');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            displaySultsData(result.data);
+        } else {
+            alert('Erro ao carregar dados da SULTS: ' + (result.error || 'Erro desconhecido'));
+            showUpload();
+        }
+    } catch (error) {
+        console.error('Erro ao buscar dados SULTS:', error);
+        alert('Erro ao conectar com a API SULTS. Verifique se o servidor está rodando.');
+        showUpload();
+    }
+}
+
+function displaySultsData(data) {
+    // Criar estrutura de dados similar ao formato de leads
+    const sultsLeads = {
+        leads: {
+            abertos: data.leads?.abertos?.dados || [],
+            perdidos: data.leads?.perdidos?.dados || [],
+            ganhos: data.leads?.ganhos?.dados || []
+        },
+        resumo: {
+            total_leads: data.resumo?.total_leads || 0,
+            abertos: data.leads?.abertos?.total || 0,
+            perdidos: data.leads?.perdidos?.total || 0,
+            ganhos: data.leads?.ganhos?.total || 0
+        }
+    };
+    
+    // Combinar todos os leads para exibição
+    const allLeads = [
+        ...(sultsLeads.leads.abertos || []),
+        ...(sultsLeads.leads.perdidos || []),
+        ...(sultsLeads.leads.ganhos || [])
+    ];
+    
+    // Criar dados no formato esperado pelo dashboard
+    currentLeadsData = {
+        total_leads: sultsLeads.resumo.total_leads,
+        tag_leads: sultsLeads.resumo.total_leads,
+        tag_mqls: 0,
+        mql_to_lead_rate: 0,
+        leads: allLeads.map(lead => ({
+            nome: lead.nome || lead.name || 'Sem nome',
+            email: lead.email || '',
+            telefone: lead.telefone || lead.phone || '',
+            status: lead.status || 'Sem status',
+            origem: lead.origem || lead.source || 'sults',
+            data: lead.data || lead.date || new Date().toISOString().split('T')[0]
+        })),
+        status_distribution: {
+            'Abertos': sultsLeads.resumo.abertos,
+            'Perdidos': sultsLeads.resumo.perdidos,
+            'Ganhos': sultsLeads.resumo.ganhos
+        },
+        kpis: {
+            total_leads: sultsLeads.resumo.total_leads,
+            leads_active: sultsLeads.resumo.abertos,
+            leads_won: sultsLeads.resumo.ganhos,
+            leads_lost: sultsLeads.resumo.perdidos,
+            tag_leads: sultsLeads.resumo.total_leads,
+            tag_mqls: 0,
+            mql_to_lead_rate: 0
+        },
+        source: 'SULTS API',
+        timestamp: new Date().toISOString()
+    };
+    
+    filteredLeadsData = currentLeadsData;
+    
+    // Exibir no dashboard de leads
+    showLeadsDashboard();
 }
 
 async function handleAutoUpload() {
