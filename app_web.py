@@ -1630,6 +1630,77 @@ def test_sults_connection():
             'suggestion': 'Tente diferentes URLs base usando: ?base_url=https://api.sults.com.br'
         }), 500
 
+@app.route('/api/sults/diagnose', methods=['GET'])
+def diagnose_sults_auth():
+    """Diagnóstico detalhado da autenticação SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    token = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
+    base_url = "https://developer.sults.com.br/api/v1"
+    endpoint = "/leads"
+    
+    import base64
+    try:
+        decoded_token = base64.b64decode(token).decode('utf-8')
+    except:
+        decoded_token = "Não foi possível decodificar"
+    
+    results = []
+    
+    # Testar diferentes formatos
+    formats_to_test = [
+        {'name': 'Bearer Token', 'header': {'Authorization': f'Bearer {token}'}},
+        {'name': 'Token', 'header': {'Authorization': f'Token {token}'}},
+        {'name': 'API Key', 'header': {'X-API-Key': token}},
+        {'name': 'Auth Token Header', 'header': {'X-Auth-Token': token}},
+        {'name': 'Token na URL', 'url_param': f'?token={token}'},
+    ]
+    
+    for fmt in formats_to_test:
+        try:
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+            }
+            headers.update(fmt.get('header', {}))
+            
+            url = f"{base_url}{endpoint}{fmt.get('url_param', '')}"
+            response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
+            
+            content_type = response.headers.get('Content-Type', '')
+            is_json = 'application/json' in content_type
+            is_html = 'text/html' in content_type
+            
+            results.append({
+                'format': fmt['name'],
+                'status_code': response.status_code,
+                'content_type': content_type,
+                'is_json': is_json,
+                'is_html': is_html,
+                'url': url,
+                'success': is_json and response.status_code == 200
+            })
+        except Exception as e:
+            results.append({
+                'format': fmt['name'],
+                'error': str(e),
+                'success': False
+            })
+    
+    return jsonify({
+        'token_info': {
+            'original': token[:30] + '...',
+            'decoded': decoded_token,
+            'format': 'Base64' if '=' in token else 'Plain'
+        },
+        'base_url': base_url,
+        'endpoint': endpoint,
+        'test_results': results,
+        'recommendation': 'Verifique a documentação em https://developers.sults.com.br/ para o formato correto de autenticação'
+    })
+
 @app.route('/api/sults/test-all', methods=['GET'])
 def test_all_sults_urls():
     """Testa várias URLs e endpoints da SULTS automaticamente"""

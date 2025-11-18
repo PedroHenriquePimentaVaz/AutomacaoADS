@@ -227,6 +227,35 @@ class SultsAPIClient:
         params = filters or {}
         return self._make_request('GET', endpoint, params=params)
     
+    def authenticate(self) -> Optional[Dict]:
+        """Tenta autenticar na API SULTS usando o token"""
+        # Possíveis endpoints de autenticação
+        auth_endpoints = ['/auth', '/login', '/authenticate', '/token', '/api/auth']
+        
+        for auth_endpoint in auth_endpoints:
+            try:
+                url = f"{self.BASE_URL}{auth_endpoint}"
+                # Tentar diferentes formatos de envio do token
+                auth_data = {
+                    'token': self.token,
+                    'api_key': self.token,
+                    'auth_token': self.token
+                }
+                
+                # Tentar POST com token
+                response = requests.post(url, json=auth_data, headers=self.headers, timeout=10)
+                if response.status_code == 200 and 'application/json' in response.headers.get('Content-Type', ''):
+                    result = response.json()
+                    # Se retornar um token de sessão, usar ele
+                    if 'token' in result or 'access_token' in result:
+                        session_token = result.get('token') or result.get('access_token')
+                        self.headers['Authorization'] = f'Bearer {session_token}'
+                        return result
+            except:
+                continue
+        
+        return None
+    
     def get_leads(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Busca leads da SULTS - endpoint conforme documentação: /leads"""
         endpoint = "/leads"
