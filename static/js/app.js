@@ -377,13 +377,24 @@ function renderLeadsKPIs() {
         );
     }
     
-    if (kpis.tag_mqls !== undefined) {
+    if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
         leadsKpisGrid.appendChild(
             createKPICard(
                 'MQLs (tag MQL)',
                 kpis.tag_mqls.toLocaleString(),
                 'fas fa-user-check',
                 '#10B981'
+            )
+        );
+    }
+    
+    if (kpis.mql_to_lead_rate !== undefined && parseFloat(kpis.mql_to_lead_rate) > 0) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Taxa MQL/Lead',
+                `${parseFloat(kpis.mql_to_lead_rate).toFixed(1)}%`,
+                'fas fa-percentage',
+                '#8B5CF6'
             )
         );
     }
@@ -2088,7 +2099,8 @@ function displaySultsData(data) {
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
             'Perdidos': sultsLeads.resumo.perdidos,
-            'Ganhos': sultsLeads.resumo.ganhos
+            'Ganhos': sultsLeads.resumo.ganhos,
+            'MQL': sultsLeads.resumo.mql
         },
         kpis: {
             total_leads: sultsLeads.resumo.total_leads,
