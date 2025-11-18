@@ -92,14 +92,15 @@ def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials, priorit
 
     ordered_titles = []
     matched_priority = []
-    for name in priority_names:
-        match = next((title for title in frames_map.keys() if title.lower() == name), None)
-        if match and match not in ordered_titles:
-            ordered_titles.append(match)
-            matched_priority.append(match)
-
-    for title in frames_map.keys():
-        if title not in ordered_titles:
+    
+    if priority_names:
+        for name in priority_names:
+            match = next((title for title in frames_map.keys() if title.lower() == name.lower()), None)
+            if match and match not in ordered_titles:
+                ordered_titles.append(match)
+                matched_priority.append(match)
+    else:
+        for title in frames_map.keys():
             ordered_titles.append(title)
 
     frames = [frames_map[title] for title in ordered_titles]
@@ -172,14 +173,15 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx', priori
 
         ordered_titles = []
         matched_priority = []
-        for name in priority_names:
-            match = next((title for title in frames_map.keys() if title.lower() == name), None)
-            if match and match not in ordered_titles:
-                ordered_titles.append(match)
-                matched_priority.append(match)
-
-        for title in frames_map.keys():
-            if title not in ordered_titles:
+        
+        if priority_names:
+            for name in priority_names:
+                match = next((title for title in frames_map.keys() if title.lower() == name.lower()), None)
+                if match and match not in ordered_titles:
+                    ordered_titles.append(match)
+                    matched_priority.append(match)
+        else:
+            for title in frames_map.keys():
                 ordered_titles.append(title)
 
         frames = [frames_map[title] for title in ordered_titles]
@@ -1503,7 +1505,7 @@ def favicon():
 def auto_upload_leads():
     try:
         file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
-        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', 'Leads Be Honest,Leads Be Honest 2,Leads Franquia')
+        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', 'Leads Be Honest 2')
         priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
         credentials = load_drive_credentials()
