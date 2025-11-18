@@ -1854,6 +1854,26 @@ def verificar_sults_leads():
                 projetos = projetos_franqueados
                 print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro (lojas excluídas)")
             
+            # Filtro final para garantir que não há lojas
+            projetos_filtrados_final = []
+            for projeto in projetos:
+                etapa = projeto.get('etapa', {})
+                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                projeto_nome = projeto.get('nome', '').lower()
+                projeto_titulo = projeto.get('titulo', '').lower()
+                
+                # Excluir qualquer coisa relacionada a lojas
+                if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
+                       for palavra in ['loja', 'lojas', 'extrabom', '[es]', '[mg]']):
+                    continue
+                
+                # Incluir apenas se for franqueado
+                if 'franqueado' in funil_nome or 'franqueado' in projeto_nome or 'franqueado' in projeto_titulo or (funil.get('id') == 1 if isinstance(funil, dict) else False):
+                    projetos_filtrados_final.append(projeto)
+            
+            projetos = projetos_filtrados_final
+            print(f"✅ Após filtro final: {len(projetos)} projetos de franqueados (sem lojas)")
             
             # Transformar projetos em leads para exibição
             leads_abertos = []
