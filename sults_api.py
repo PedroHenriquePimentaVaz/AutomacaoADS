@@ -35,7 +35,8 @@ class SultsAPIClient:
         self.headers = {
             'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
     
     @staticmethod
@@ -44,7 +45,8 @@ class SultsAPIClient:
         headers = {
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
         url = f"{base_url}{endpoint}"
         
@@ -78,7 +80,19 @@ class SultsAPIClient:
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            
+            # Verificar se a resposta é JSON válido
+            content_type = response.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                print(f"Aviso: Resposta não é JSON. Content-Type: {content_type}")
+                print(f"Primeiros 200 caracteres da resposta: {response.text[:200]}")
+            
+            try:
+                return response.json()
+            except ValueError as json_error:
+                error_msg = f"Resposta não é JSON válido. Status: {response.status_code}, Content-Type: {content_type}"
+                error_msg += f"\nResposta: {response.text[:500]}"
+                raise Exception(error_msg) from json_error
         except requests.exceptions.HTTPError as e:
             error_msg = f"Erro HTTP {e.response.status_code} na requisição à API SULTS"
             if e.response.status_code == 404:
