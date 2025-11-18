@@ -1929,9 +1929,11 @@ def verificar_sults_leads():
                 responsavel_nome = responsavel.get('nome', 'Sem responsável') if isinstance(responsavel, dict) else 'Sem responsável'
                 leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
                 
-                # Contar por unidade
-                unidade = projeto.get('unidade', {})
-                unidade_nome = unidade.get('nomeFantasia', 'Sem unidade') if isinstance(unidade, dict) else 'Sem unidade'
+                # Contar por unidade (usar contatoEmpresa se disponível)
+                contato_empresa = projeto.get('contatoEmpresa', {})
+                unidade_nome = 'Sem unidade'
+                if contato_empresa and isinstance(contato_empresa, dict):
+                    unidade_nome = contato_empresa.get('nomeFantasia', 'Sem unidade')
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 # Extrair informações de contato (para negócios de franqueados)
