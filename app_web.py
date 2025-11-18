@@ -1818,23 +1818,37 @@ def verificar_sults_leads():
         try:
             client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/api/v1", auth_format="token")
             
-            # Buscar projetos (endpoint confirmado funcionando)
-            projetos = client.get_projetos()
+            # Primeiro tentar buscar negócios de franqueados via endpoint de expansão
+            projetos = []
+            try:
+                negocios = client.get_negocios_franqueados()
+                if negocios:
+                    projetos = negocios
+                    print(f"✅ Encontrados {len(negocios)} negócios de franqueados via expansão")
+            except Exception as e:
+                print(f"⚠️ Erro ao buscar negócios via expansão: {e}")
             
-            # Filtrar apenas projetos de franqueados
-            # Projetos de franqueados têm funil com nome "Franqueados" ou nome contém "Franqueado"
-            projetos_franqueados = []
-            for projeto in projetos:
-                etapa = projeto.get('etapa', {})
-                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
-                funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
-                projeto_nome = projeto.get('nome', '').lower()
+            # Se não encontrou via expansão, buscar projetos e filtrar
+            if not projetos:
+                projetos = client.get_projetos()
                 
-                # Filtrar apenas projetos do funil "Franqueados" ou que tenham "franqueado" no nome
-                if 'franqueado' in funil_nome or 'franqueado' in projeto_nome:
-                    projetos_franqueados.append(projeto)
-            
-            projetos = projetos_franqueados
+                # Filtrar apenas projetos de franqueados
+                # Projetos de franqueados têm funil com nome "Franqueados" ou nome contém "Franqueado"
+                projetos_franqueados = []
+                for projeto in projetos:
+                    etapa = projeto.get('etapa', {})
+                    funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                    funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                    funil_id = funil.get('id') if isinstance(funil, dict) else None
+                    projeto_nome = projeto.get('nome', '').lower()
+                    
+                    # Filtrar apenas projetos do funil "Franqueados" (ID 1) ou que tenham "franqueado" no nome
+                    # Funil ID 1 geralmente é "Franqueados"
+                    if funil_id == 1 or 'franqueado' in funil_nome or 'franqueado' in projeto_nome:
+                        projetos_franqueados.append(projeto)
+                
+                projetos = projetos_franqueados
+                print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro")
             
             # Buscar empresas (endpoint confirmado funcionando)
             empresas = []
