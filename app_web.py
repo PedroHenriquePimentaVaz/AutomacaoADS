@@ -1862,13 +1862,25 @@ def verificar_sults_leads():
                 elif projeto.get('pausado'):
                     status = 'perdido'
                 
-                # Extrair fase/categoria
+                # Extrair etapa/fase do projeto
+                etapa = projeto.get('etapa', {})
+                etapa_nome = etapa.get('nome', 'Sem etapa') if isinstance(etapa, dict) else 'Sem etapa'
+                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                funil_nome = funil.get('nome', '') if isinstance(funil, dict) else ''
+                
+                # Extrair categoria
                 categoria = projeto.get('categoria', {})
                 categoria_nome = categoria.get('nome', 'Sem categoria') if isinstance(categoria, dict) else 'Sem categoria'
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
-                # Fase baseada em status e categoria
-                fase = f"{categoria_nome} - {status.title()}"
+                # Fase: usar etapa se disponível, senão usar categoria + status
+                if etapa_nome and etapa_nome != 'Sem etapa':
+                    fase = etapa_nome
+                    if funil_nome:
+                        fase = f"{funil_nome} - {etapa_nome}"
+                else:
+                    fase = f"{categoria_nome} - {status.title()}"
+                
                 leads_por_fase[fase] = leads_por_fase.get(fase, 0) + 1
                 
                 # Contar por responsável
@@ -1888,6 +1900,8 @@ def verificar_sults_leads():
                     'unidade': unidade_nome,
                     'categoria': categoria_nome,
                     'fase': fase,
+                    'etapa': etapa_nome,
+                    'funil': funil_nome,
                     'status': status,
                     'ativo': projeto.get('ativo', False),
                     'data_criacao': projeto.get('dtCriacao', ''),

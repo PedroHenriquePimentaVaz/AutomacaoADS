@@ -290,6 +290,7 @@ function renderLeadsDashboard() {
     renderLeadCharts();
     renderLeadDistributions();
     renderLeadRecentTable();
+    renderLeadsByPhase();
     renderLeadsTable();
 }
 
@@ -811,6 +812,95 @@ function renderLeadsTable() {
     });
     
     filterLeadsTable();
+}
+
+function renderLeadsByPhase() {
+    const container = document.getElementById('leadsByPhaseContainer');
+    if (!container || !filteredLeadsData) return;
+    
+    const leads = filteredLeadsData.leads || [];
+    
+    // Organizar leads por fase
+    const leadsByPhase = {};
+    leads.forEach(lead => {
+        const fase = lead.fase || 'Sem fase';
+        if (!leadsByPhase[fase]) {
+            leadsByPhase[fase] = [];
+        }
+        leadsByPhase[fase].push(lead);
+    });
+    
+    container.innerHTML = '';
+    
+    // Ordenar fases por quantidade de leads
+    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
+    
+    sortedPhases.forEach(([fase, faseLeads]) => {
+        const phaseCard = document.createElement('div');
+        phaseCard.className = 'phase-card';
+        
+        const phaseHeader = document.createElement('div');
+        phaseHeader.className = 'phase-header';
+        phaseHeader.innerHTML = `
+            <div class="phase-title">
+                <i class="fas fa-chevron-down phase-icon"></i>
+                <h3>${fase}</h3>
+                <span class="phase-count">${faseLeads.length} lead${faseLeads.length !== 1 ? 's' : ''}</span>
+            </div>
+        `;
+        
+        const phaseContent = document.createElement('div');
+        phaseContent.className = 'phase-content';
+        phaseContent.style.display = 'none';
+        
+        const leadsTable = document.createElement('table');
+        leadsTable.className = 'phase-leads-table';
+        leadsTable.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Status</th>
+                    <th>Categoria</th>
+                    <th>Responsável</th>
+                    <th>Unidade</th>
+                    <th>Data</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${faseLeads.map(lead => `
+                    <tr>
+                        <td>${lead.nome || 'Sem nome'}</td>
+                        <td>
+                            <span class="status-badge" style="background-color: ${
+                                lead.status === 'aberto' ? '#F97316' : 
+                                lead.status === 'ganho' ? '#10B981' : '#EF4444'
+                            }">
+                                ${lead.status || 'Sem status'}
+                            </span>
+                        </td>
+                        <td>${lead.categoria || '-'}</td>
+                        <td>${lead.responsavel || '-'}</td>
+                        <td>${lead.unidade || '-'}</td>
+                        <td>${lead.data ? new Date(lead.data).toLocaleDateString('pt-BR') : '-'}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        
+        phaseContent.appendChild(leadsTable);
+        
+        phaseHeader.addEventListener('click', () => {
+            const isExpanded = phaseContent.style.display !== 'none';
+            phaseContent.style.display = isExpanded ? 'none' : 'block';
+            const icon = phaseHeader.querySelector('.phase-icon');
+            icon.classList.toggle('fa-chevron-down', isExpanded);
+            icon.classList.toggle('fa-chevron-up', !isExpanded);
+        });
+        
+        phaseCard.appendChild(phaseHeader);
+        phaseCard.appendChild(phaseContent);
+        container.appendChild(phaseCard);
+    });
 }
 
 function filterLeadsTable() {
@@ -2064,7 +2154,9 @@ function displaySultsData(data) {
             responsavel: lead.responsavel || '',
             unidade: lead.unidade || '',
             fase: lead.fase || '',
-            categoria: lead.categoria || ''
+            categoria: lead.categoria || '',
+            etapa: lead.etapa || '',
+            funil: lead.funil || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,

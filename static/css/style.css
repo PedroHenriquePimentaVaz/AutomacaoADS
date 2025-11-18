@@ -1238,3 +1238,106 @@ body {
 .mt-0 { margin-top: 0; }
 .hidden { display: none; }
 .visible { display: block; }
+
+/* Phases Container */
+.phases-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.phase-card {
+    background: var(--primary-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.phase-card:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.phase-header {
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(135deg, rgba(0, 28, 84, 0.05), rgba(35, 116, 185, 0.08));
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.phase-header:hover {
+    background: linear-gradient(135deg, rgba(0, 28, 84, 0.08), rgba(35, 116, 185, 0.12));
+}
+
+.phase-title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.phase-title h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
+
+.phase-icon {
+    color: var(--bh-primary);
+    transition: transform 0.3s ease;
+}
+
+.phase-count {
+    background: var(--bh-primary);
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.phase-content {
+    padding: 1.5rem;
+    background: var(--secondary-bg);
+}
+
+.phase-leads-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.phase-leads-table thead {
+    background: var(--accent-bg);
+}
+
+.phase-leads-table th {
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-medium);
+}
+
+.phase-leads-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-secondary);
+}
+
+.phase-leads-table tbody tr:hover {
+    background: var(--accent-bg);
+}
+
+.phase-leads-table .status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
