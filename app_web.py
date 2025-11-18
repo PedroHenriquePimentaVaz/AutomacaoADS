@@ -9,6 +9,12 @@ import requests
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+try:
+    from sults_api import SultsAPIClient
+    SULTS_AVAILABLE = True
+except ImportError:
+    SULTS_AVAILABLE = False
+    print("Aviso: Módulo sults_api não disponível. Integração SULTS desabilitada.")
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -1586,6 +1592,75 @@ def upload_leads():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Erro ao processar planilha de leads: {str(e)}'}), 500
+
+@app.route('/api/sults/test', methods=['GET'])
+def test_sults_connection():
+    """Testa a conexão com a API da SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        client = SultsAPIClient()
+        # Tentar buscar unidades como teste
+        unidades = client.get_unidades()
+        return jsonify({
+            'success': True,
+            'message': 'Conexão com SULTS estabelecida com sucesso',
+            'unidades_count': len(unidades) if isinstance(unidades, list) else 0
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao conectar com SULTS: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/chamados', methods=['GET'])
+def get_sults_chamados():
+    """Busca chamados da SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        client = SultsAPIClient()
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        
+        status_data = client.get_leads_status(date_from=date_from, date_to=date_to)
+        
+        return jsonify({
+            'success': True,
+            'data': status_data
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar chamados: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/sync-lead', methods=['POST'])
+def sync_lead_to_sults():
+    """Sincroniza um lead com a SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        lead_data = request.get_json()
+        if not lead_data:
+            return jsonify({'error': 'Dados do lead não fornecidos'}), 400
+        
+        client = SultsAPIClient()
+        result = client.sync_lead_with_sults(lead_data)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Lead sincronizado com SULTS',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao sincronizar lead: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     print(f"Templates path: {app.template_folder}")

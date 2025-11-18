@@ -46,6 +46,8 @@ DRIVE_FILE_ID=1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY
 LEADS_FILE_ID=1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8
 GOOGLE_ADS_FILE_ID=1JIFkoM-GkxDKCu0AuF84jPqkqURgr8H3E0eKcrUkkrY
 GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
+LEADS_SHEETS_PRIORITY=Leads Be Honest 2
+SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 ```
 
 ### Credenciais do Google Drive
@@ -97,6 +99,17 @@ GOOGLE_APPLICATION_CREDENTIALS=sixth-now-475017-k8-785034518ab7.json
 - Exportação inteligente de Google Sheets
 - Suporte para múltiplas planilhas
 - Leitura de abas específicas (ex: "Controle Google ADS")
+
+### Integração SULTS API
+- Sincronização de leads com a plataforma SULTS
+- Busca de chamados e status de leads
+- Consulta de unidades e projetos
+- Endpoints disponíveis:
+  - `GET /api/sults/test` - Testa conexão com a API
+  - `GET /api/sults/chamados` - Busca chamados (parâmetros: `date_from`, `date_to`)
+  - `POST /api/sults/sync-lead` - Sincroniza um lead com a SULTS
+- Token configurável via variável de ambiente `SULTS_API_TOKEN`
+- Documentação da API: https://developers.sults.com.br/
 
 ## 🎨 Design System
 
