@@ -725,33 +725,88 @@ function renderLeadRecentTable() {
 function renderLeadsTable() {
     if (!leadsTableHead || !leadsTableBody || !filteredLeadsData) return;
     
-    const data = filteredLeadsData.raw_data || [];
-    const columns = filteredLeadsData.columns || [];
+    // Para dados da SULTS, usar leads diretamente
+    const leads = filteredLeadsData.leads || [];
     
     leadsTableHead.innerHTML = '';
     leadsTableBody.innerHTML = '';
     
-    if (!data.length || !columns.length) {
-        leadsTableBody.innerHTML = '<tr><td>Nenhum dado encontrado</td></tr>';
+    if (!leads.length) {
+        leadsTableBody.innerHTML = '<tr><td colspan="8">Nenhum lead encontrado</td></tr>';
         return;
     }
     
+    // Criar cabeçalho da tabela
     const headerRow = document.createElement('tr');
-    columns.forEach(column => {
+    const headers = ['Nome', 'Email', 'Telefone', 'Status', 'Fase', 'Categoria', 'Responsável', 'Unidade', 'Data'];
+    headers.forEach(header => {
         const th = document.createElement('th');
-        th.textContent = column;
+        th.textContent = header;
         headerRow.appendChild(th);
     });
     leadsTableHead.appendChild(headerRow);
     
-    data.forEach(row => {
+    // Criar linhas da tabela
+    leads.forEach(lead => {
         const tr = document.createElement('tr');
-        columns.forEach(column => {
-            const td = document.createElement('td');
-            const cellValue = row[column];
-            td.textContent = cellValue !== null && cellValue !== undefined ? cellValue : '';
-            tr.appendChild(td);
-        });
+        
+        // Nome
+        const tdNome = document.createElement('td');
+        tdNome.textContent = lead.nome || 'Sem nome';
+        tr.appendChild(tdNome);
+        
+        // Email
+        const tdEmail = document.createElement('td');
+        tdEmail.textContent = lead.email || '-';
+        tr.appendChild(tdEmail);
+        
+        // Telefone
+        const tdTelefone = document.createElement('td');
+        tdTelefone.textContent = lead.telefone || '-';
+        tr.appendChild(tdTelefone);
+        
+        // Status
+        const tdStatus = document.createElement('td');
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge';
+        const status = lead.status || 'Sem status';
+        statusBadge.textContent = status;
+        if (status === 'aberto' || status === 'Aberto') {
+            statusBadge.style.backgroundColor = '#F97316';
+        } else if (status === 'ganho' || status === 'Ganho') {
+            statusBadge.style.backgroundColor = '#10B981';
+        } else if (status === 'perdido' || status === 'Perdido') {
+            statusBadge.style.backgroundColor = '#EF4444';
+        }
+        tdStatus.appendChild(statusBadge);
+        tr.appendChild(tdStatus);
+        
+        // Fase
+        const tdFase = document.createElement('td');
+        tdFase.textContent = lead.fase || lead.categoria || '-';
+        tr.appendChild(tdFase);
+        
+        // Categoria
+        const tdCategoria = document.createElement('td');
+        tdCategoria.textContent = lead.categoria || '-';
+        tr.appendChild(tdCategoria);
+        
+        // Responsável
+        const tdResponsavel = document.createElement('td');
+        tdResponsavel.textContent = lead.responsavel || '-';
+        tr.appendChild(tdResponsavel);
+        
+        // Unidade
+        const tdUnidade = document.createElement('td');
+        tdUnidade.textContent = lead.unidade || '-';
+        tr.appendChild(tdUnidade);
+        
+        // Data
+        const tdData = document.createElement('td');
+        const dataStr = lead.data || '';
+        tdData.textContent = dataStr ? new Date(dataStr).toLocaleDateString('pt-BR') : '-';
+        tr.appendChild(tdData);
+        
         leadsTableBody.appendChild(tr);
     });
     
