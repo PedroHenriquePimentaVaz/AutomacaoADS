@@ -388,27 +388,6 @@ function renderLeadsKPIs() {
         );
     }
     
-    if (kpis.lojas_ativas !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Lojas Ativas',
-                kpis.lojas_ativas.toLocaleString(),
-                'fas fa-store',
-                '#3B82F6'
-            )
-        );
-    }
-    
-    if (kpis.total_empresas !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Total de Empresas',
-                kpis.total_empresas.toLocaleString(),
-                'fas fa-building',
-                '#8B5CF6'
-            )
-        );
-    }
 }
 
 function renderLeadCharts() {
