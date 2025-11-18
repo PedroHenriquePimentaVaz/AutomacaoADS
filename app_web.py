@@ -1850,30 +1850,6 @@ def verificar_sults_leads():
                 projetos = projetos_franqueados
                 print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro")
             
-            # Buscar empresas (endpoint confirmado funcionando)
-            empresas = []
-            try:
-                empresas_client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/v1", auth_format="token")
-                empresas = empresas_client.get_unidades() or []
-            except:
-                pass
-            
-            # Processar empresas/unidades para contar lojas
-            lojas_ativas = 0
-            lojas_por_uf = {}
-            lojas_por_cidade = {}
-            
-            for empresa in empresas:
-                if empresa.get('ativo', False):
-                    lojas_ativas += 1
-                    
-                    # Contar por UF
-                    endereco = empresa.get('endereco', {})
-                    if isinstance(endereco, dict):
-                        uf = endereco.get('uf', 'N/A')
-                        cidade = endereco.get('cidade', 'N/A')
-                        lojas_por_uf[uf] = lojas_por_uf.get(uf, 0) + 1
-                        lojas_por_cidade[cidade] = lojas_por_cidade.get(cidade, 0) + 1
             
             # Transformar projetos em leads para exibição
             leads_abertos = []
@@ -1991,8 +1967,6 @@ def verificar_sults_leads():
                 'resumo': {
                     'total_leads': total_leads,
                     'total_projetos': len(projetos),
-                    'total_empresas': len(empresas),
-                    'lojas_ativas': lojas_ativas,
                     'leads_abertos': len(leads_abertos),
                     'leads_perdidos': len(leads_perdidos),
                     'leads_ganhos': len(leads_ganhos)
@@ -2001,9 +1975,7 @@ def verificar_sults_leads():
                     'leads_por_fase': leads_por_fase,
                     'leads_por_categoria': leads_por_categoria,
                     'leads_por_responsavel': leads_por_responsavel,
-                    'leads_por_unidade': leads_por_unidade,
-                    'lojas_por_uf': lojas_por_uf,
-                    'lojas_por_cidade': lojas_por_cidade
+                    'leads_por_unidade': leads_por_unidade
                 }
             }
             
