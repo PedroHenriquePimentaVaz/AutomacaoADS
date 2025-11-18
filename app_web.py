@@ -1825,21 +1825,36 @@ def verificar_sults_leads():
             empresas = []
             try:
                 empresas_client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/v1", auth_format="token")
-                empresas_response = empresas_client._make_request('GET', '/empresas')
-                if isinstance(empresas_response, list):
-                    empresas = empresas_response
-                elif isinstance(empresas_response, dict) and 'data' in empresas_response:
-                    empresas = empresas_response['data']
-            except Exception as e:
-                print(f"Erro ao buscar empresas: {e}")
-                empresas = []
+                empresas = empresas_client.get_unidades() or []
+            except:
+                pass
+            
+            # Processar empresas/unidades para contar lojas
+            lojas_ativas = 0
+            lojas_por_uf = {}
+            lojas_por_cidade = {}
+            
+            for empresa in empresas:
+                if empresa.get('ativo', False):
+                    lojas_ativas += 1
+                    
+                    # Contar por UF
+                    endereco = empresa.get('endereco', {})
+                    if isinstance(endereco, dict):
+                        uf = endereco.get('uf', 'N/A')
+                        cidade = endereco.get('cidade', 'N/A')
+                        lojas_por_uf[uf] = lojas_por_uf.get(uf, 0) + 1
+                        lojas_por_cidade[cidade] = lojas_por_cidade.get(cidade, 0) + 1
             
             # Transformar projetos em leads para exibição
             leads_abertos = []
             leads_perdidos = []
             leads_ganhos = []
+            leads_por_fase = {}
+            leads_por_categoria = {}
+            leads_por_responsavel = {}
+            leads_por_unidade = {}
             
-            # Processar projetos com mais detalhes
             for projeto in projetos:
                 status = 'aberto'
                 if projeto.get('concluido'):
@@ -1847,48 +1862,38 @@ def verificar_sults_leads():
                 elif projeto.get('pausado'):
                     status = 'perdido'
                 
-                # Extrair informações da equipe
-                equipe = projeto.get('equipe', [])
-                equipe_nomes = [p.get('pessoa', {}).get('nome', '') if isinstance(p.get('pessoa'), dict) else '' for p in equipe if isinstance(p, dict)]
-                
-                # Extrair informações da unidade
-                unidade_info = projeto.get('unidade', {})
-                unidade_nome = unidade_info.get('nomeFantasia', '') if isinstance(unidade_info, dict) else ''
-                unidade_cnpj = unidade_info.get('cnpj', '') if isinstance(unidade_info, dict) else ''
-                
-                # Extrair informações do responsável
-                responsavel_info = projeto.get('responsavel', {})
-                responsavel_nome = responsavel_info.get('nome', '') if isinstance(responsavel_info, dict) else ''
-                
-                # Extrair categoria e modelo
+                # Extrair fase/categoria
                 categoria = projeto.get('categoria', {})
-                categoria_nome = categoria.get('nome', '') if isinstance(categoria, dict) else ''
+                categoria_nome = categoria.get('nome', 'Sem categoria') if isinstance(categoria, dict) else 'Sem categoria'
+                leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
-                modelo = projeto.get('modelo', {})
-                modelo_nome = modelo.get('nome', '') if isinstance(modelo, dict) else ''
+                # Fase baseada em status e categoria
+                fase = f"{categoria_nome} - {status.title()}"
+                leads_por_fase[fase] = leads_por_fase.get(fase, 0) + 1
+                
+                # Contar por responsável
+                responsavel = projeto.get('responsavel', {})
+                responsavel_nome = responsavel.get('nome', 'Sem responsável') if isinstance(responsavel, dict) else 'Sem responsável'
+                leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
+                
+                # Contar por unidade
+                unidade = projeto.get('unidade', {})
+                unidade_nome = unidade.get('nomeFantasia', 'Sem unidade') if isinstance(unidade, dict) else 'Sem unidade'
+                leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 lead_data = {
                     'id': projeto.get('id'),
                     'nome': projeto.get('nome', 'Sem nome'),
                     'responsavel': responsavel_nome,
                     'unidade': unidade_nome,
-                    'unidade_cnpj': unidade_cnpj,
                     'categoria': categoria_nome,
-                    'modelo': modelo_nome,
-                    'equipe': ', '.join(equipe_nomes[:3]),  # Primeiros 3 membros
-                    'equipe_total': len(equipe_nomes),
+                    'fase': fase,
                     'status': status,
                     'ativo': projeto.get('ativo', False),
-                    'pausado': projeto.get('pausado', False),
-                    'concluido': projeto.get('concluido', False),
                     'data_criacao': projeto.get('dtCriacao', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
                     'data_fim': projeto.get('dtFim', ''),
-                    'data_inicio_planejamento': projeto.get('dtInicioPlanejamento', ''),
-                    'data_fim_planejamento': projeto.get('dtFimPlanejamento', ''),
-                    'origem': 'SULTS - Projeto',
-                    'tipo_calculo': projeto.get('tipoCalculoTarefa', ''),
-                    'dia_semana': projeto.get('diaSemanaTarefa', '')
+                    'origem': 'SULTS - Projeto'
                 }
                 
                 if status == 'aberto':
@@ -1898,47 +1903,7 @@ def verificar_sults_leads():
                 else:
                     leads_perdidos.append(lead_data)
             
-            # Processar empresas como leads adicionais
-            empresas_leads = []
-            for empresa in empresas[:100]:  # Limitar a 100 empresas
-                endereco = empresa.get('endereco', {})
-                endereco_completo = ''
-                if isinstance(endereco, dict):
-                    rua = endereco.get('rua', '')
-                    numero = endereco.get('numero', '')
-                    bairro = endereco.get('bairro', '')
-                    cidade = endereco.get('cidade', '')
-                    uf = endereco.get('uf', '')
-                    endereco_completo = f"{rua}, {numero} - {bairro}, {cidade}/{uf}".strip(', ')
-                
-                emails = empresa.get('email', [])
-                telefones = empresa.get('telefone', [])
-                
-                empresa_lead = {
-                    'id': empresa.get('id'),
-                    'nome': empresa.get('nomeFantasia', empresa.get('razaoSocial', 'Sem nome')),
-                    'razao_social': empresa.get('razaoSocial', ''),
-                    'cnpj': empresa.get('cnpj', ''),
-                    'email': ', '.join(emails[:2]) if isinstance(emails, list) else '',
-                    'telefone': ', '.join(telefones[:2]) if isinstance(telefones, list) else '',
-                    'endereco': endereco_completo,
-                    'cidade': endereco.get('cidade', '') if isinstance(endereco, dict) else '',
-                    'uf': endereco.get('uf', '') if isinstance(endereco, dict) else '',
-                    'status': 'ativo' if empresa.get('ativo', False) else 'inativo',
-                    'situacao_id': empresa.get('situacaoId', ''),
-                    'data_cadastro': empresa.get('dtCadastro', ''),
-                    'data_cadastro_sistema': empresa.get('dtCadastroSistema', ''),
-                    'data_inicio_implantacao': empresa.get('dtInicioImplantacao', ''),
-                    'data_fim_implantacao': empresa.get('dtFimImplantacao', ''),
-                    'data_inauguracao': empresa.get('dtInauguracao', ''),
-                    'origem': 'SULTS - Empresa'
-                }
-                
-                if empresa.get('ativo', False):
-                    leads_abertos.append(empresa_lead)
-                empresas_leads.append(empresa_lead)
-            
-            total_leads = len(projetos) + len(empresas_leads)
+            total_leads = len(projetos)
             
             resultado = {
                 'token_status': token_status,
@@ -1950,35 +1915,39 @@ def verificar_sults_leads():
                 'leads': {
                     'abertos': {
                         'total': len(leads_abertos),
-                        'dados': leads_abertos[:100]  # Aumentar limite
+                        'dados': leads_abertos[:50]
                     },
                     'perdidos': {
                         'total': len(leads_perdidos),
-                        'dados': leads_perdidos[:100]
+                        'dados': leads_perdidos[:50]
                     },
                     'ganhos': {
                         'total': len(leads_ganhos),
-                        'dados': leads_ganhos[:100]
+                        'dados': leads_ganhos[:50]
                     }
                 },
                 'resumo': {
                     'total_leads': total_leads,
                     'total_projetos': len(projetos),
                     'total_empresas': len(empresas),
-                    'projetos_ativos': len([p for p in projetos if p.get('ativo', False) and not p.get('concluido', False)]),
-                    'projetos_concluidos': len([p for p in projetos if p.get('concluido', False)]),
-                    'projetos_pausados': len([p for p in projetos if p.get('pausado', False)]),
-                    'empresas_ativas': len([e for e in empresas if e.get('ativo', False)])
+                    'lojas_ativas': lojas_ativas,
+                    'leads_abertos': len(leads_abertos),
+                    'leads_perdidos': len(leads_perdidos),
+                    'leads_ganhos': len(leads_ganhos)
                 },
-                'detalhes': {
-                    'projetos': projetos[:20],  # Primeiros 20 projetos completos
-                    'empresas': empresas[:20]    # Primeiros 20 empresas completas
+                'estatisticas': {
+                    'leads_por_fase': leads_por_fase,
+                    'leads_por_categoria': leads_por_categoria,
+                    'leads_por_responsavel': leads_por_responsavel,
+                    'leads_por_unidade': leads_por_unidade,
+                    'lojas_por_uf': lojas_por_uf,
+                    'lojas_por_cidade': lojas_por_cidade
                 }
             }
             
             return jsonify({
                 'success': True,
-                'message': f'✅ Dados carregados da SULTS! ({len(projetos)} projetos, {len(empresas)} empresas)',
+                'message': f'✅ Dados carregados da SULTS! ({total_leads} projetos encontrados)',
                 'data': resultado
             })
         except Exception as main_error:

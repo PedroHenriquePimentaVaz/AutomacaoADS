@@ -386,12 +386,50 @@ function renderLeadsKPIs() {
             )
         );
     }
+    
+    if (kpis.lojas_ativas !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Lojas Ativas',
+                kpis.lojas_ativas.toLocaleString(),
+                'fas fa-store',
+                '#3B82F6'
+            )
+        );
+    }
+    
+    if (kpis.total_empresas !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Total de Empresas',
+                kpis.total_empresas.toLocaleString(),
+                'fas fa-building',
+                '#8B5CF6'
+            )
+        );
+    }
 }
 
 function renderLeadCharts() {
     if (!filteredLeadsData) return;
     
     const distributions = filteredLeadsData.distributions || {};
+    const estatisticas = filteredLeadsData.estatisticas || {};
+    
+    // Renderizar gráfico de leads por fase
+    if (estatisticas.leads_por_fase && Object.keys(estatisticas.leads_por_fase).length > 0) {
+        renderLeadsByPhaseChart(estatisticas.leads_por_fase);
+    }
+    
+    // Renderizar gráfico de leads por categoria
+    if (estatisticas.leads_por_categoria && Object.keys(estatisticas.leads_por_categoria).length > 0) {
+        renderLeadsByCategoryChart(estatisticas.leads_por_categoria);
+    }
+    
+    // Renderizar gráfico de lojas por UF
+    if (estatisticas.lojas_por_uf && Object.keys(estatisticas.lojas_por_uf).length > 0) {
+        renderLojasByUFChart(estatisticas.lojas_por_uf);
+    }
     
     if (leadStatusChart) {
         const statusData = distributions.status || [];
@@ -415,8 +453,208 @@ function renderLeadCharts() {
     }
 }
 
+function renderLeadsByPhaseChart(data) {
+    // Criar ou atualizar gráfico de leads por fase
+    const canvasId = 'leadsByPhaseChart';
+    let canvas = document.getElementById(canvasId);
+    
+    if (!canvas) {
+        // Criar canvas se não existir
+        const chartContainer = document.querySelector('.lead-charts-container') || document.getElementById('leadChartsSection');
+        if (chartContainer) {
+            canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            canvas.style.maxHeight = '400px';
+            const chartDiv = document.createElement('div');
+            chartDiv.className = 'chart-container';
+            chartDiv.innerHTML = '<h3>Leads por Fase</h3>';
+            chartDiv.appendChild(canvas);
+            chartContainer.appendChild(chartDiv);
+        } else {
+            return;
+        }
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destruir gráfico anterior se existir
+    if (window.leadsByPhaseChart) {
+        window.leadsByPhaseChart.destroy();
+    }
+    
+    const labels = Object.keys(data);
+    const values = Object.values(data);
+    
+    window.leadsByPhaseChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Leads',
+                data: values,
+                backgroundColor: 'rgba(0, 28, 84, 0.8)',
+                borderColor: '#001c54',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function renderLeadsByCategoryChart(data) {
+    const canvasId = 'leadsByCategoryChart';
+    let canvas = document.getElementById(canvasId);
+    
+    if (!canvas) {
+        const chartContainer = document.querySelector('.lead-charts-container') || document.getElementById('leadChartsSection');
+        if (chartContainer) {
+            canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            canvas.style.maxHeight = '400px';
+            const chartDiv = document.createElement('div');
+            chartDiv.className = 'chart-container';
+            chartDiv.innerHTML = '<h3>Leads por Categoria</h3>';
+            chartDiv.appendChild(canvas);
+            chartContainer.appendChild(chartDiv);
+        } else {
+            return;
+        }
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    if (window.leadsByCategoryChart) {
+        window.leadsByCategoryChart.destroy();
+    }
+    
+    const labels = Object.keys(data);
+    const values = Object.values(data);
+    
+    window.leadsByCategoryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values,
+                backgroundColor: [
+                    '#001c54',
+                    '#edb125',
+                    '#de5e36',
+                    '#2374b9',
+                    '#10B981',
+                    '#8B5CF6'
+                ],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+function renderLojasByUFChart(data) {
+    const canvasId = 'lojasByUFChart';
+    let canvas = document.getElementById(canvasId);
+    
+    if (!canvas) {
+        const chartContainer = document.querySelector('.lead-charts-container') || document.getElementById('leadChartsSection');
+        if (chartContainer) {
+            canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            canvas.style.maxHeight = '400px';
+            const chartDiv = document.createElement('div');
+            chartDiv.className = 'chart-container';
+            chartDiv.innerHTML = '<h3>Lojas por Estado (UF)</h3>';
+            chartDiv.appendChild(canvas);
+            chartContainer.appendChild(chartDiv);
+        } else {
+            return;
+        }
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    if (window.lojasByUFChart) {
+        window.lojasByUFChart.destroy();
+    }
+    
+    // Ordenar por quantidade
+    const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]);
+    const labels = sorted.map(item => item[0]);
+    const values = sorted.map(item => item[1]);
+    
+    window.lojasByUFChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Lojas',
+                data: values,
+                backgroundColor: 'rgba(237, 177, 37, 0.8)',
+                borderColor: '#edb125',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
 function renderLeadDistributions() {
     const distributions = filteredLeadsData?.distributions || {};
+    const estatisticas = filteredLeadsData?.estatisticas || {};
+    
+    // Adicionar distribuições de fase e categoria se disponíveis
+    if (estatisticas.leads_por_fase) {
+        const faseList = document.getElementById('leadFaseList');
+        if (faseList) {
+            faseList.innerHTML = '';
+            const sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => b[1] - a[1]);
+            sorted.forEach(([fase, count]) => {
+                const item = document.createElement('div');
+                item.className = 'distribution-item';
+                item.innerHTML = `
+                    <span class="distribution-label">${fase}</span>
+                    <span class="distribution-value">${count}</span>
+                `;
+                faseList.appendChild(item);
+            });
+        }
+    }
     
     populateDistributionList(leadStatusList, distributions.status, 'Leads');
     populateDistributionList(leadSourceList, distributions.source, 'Leads');
@@ -1736,18 +1974,7 @@ function displaySultsData(data) {
             origem: lead.origem || lead.source || 'SULTS',
             data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
             responsavel: lead.responsavel || '',
-            unidade: lead.unidade || lead.unidade_nome || '',
-            cnpj: lead.cnpj || lead.unidade_cnpj || '',
-            endereco: lead.endereco || '',
-            cidade: lead.cidade || '',
-            uf: lead.uf || '',
-            categoria: lead.categoria || '',
-            modelo: lead.modelo || '',
-            equipe: lead.equipe || '',
-            razao_social: lead.razao_social || '',
-            data_inicio: lead.data_inicio || '',
-            data_fim: lead.data_fim || '',
-            data_inauguracao: lead.data_inauguracao || ''
+            unidade: lead.unidade || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
@@ -1761,7 +1988,17 @@ function displaySultsData(data) {
             leads_lost: sultsLeads.resumo.perdidos,
             tag_leads: sultsLeads.resumo.total_leads,
             tag_mqls: 0,
-            mql_to_lead_rate: 0
+            mql_to_lead_rate: 0,
+            lojas_ativas: sultsLeads.resumo.lojas_ativas,
+            total_empresas: sultsLeads.resumo.total_empresas
+        },
+        estatisticas: {
+            leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
+            leads_por_categoria: sultsLeads.estatisticas.leads_por_categoria || {},
+            leads_por_responsavel: sultsLeads.estatisticas.leads_por_responsavel || {},
+            leads_por_unidade: sultsLeads.estatisticas.leads_por_unidade || {},
+            lojas_por_uf: sultsLeads.estatisticas.lojas_por_uf || {},
+            lojas_por_cidade: sultsLeads.estatisticas.lojas_por_cidade || {}
         },
         source: 'SULTS API',
         timestamp: new Date().toISOString()
