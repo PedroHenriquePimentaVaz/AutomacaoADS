@@ -24,8 +24,8 @@ class SultsAPIClient:
     """
     
     # URL base da API SULTS conforme documentação: https://developers.sults.com.br/
-    # Documentação oficial indica: https://developer.sults.com.br/api/v1
-    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://developer.sults.com.br/api/v1")
+    # Base URL: https://behonestbrasil.sults.com.br/api/v1
+    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://behonestbrasil.sults.com.br/api/v1")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, auth_format: str = 'bearer'):
@@ -40,31 +40,21 @@ class SultsAPIClient:
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
         
-        # Configurar autenticação conforme formato
-        # O token parece ser base64 que decodifica para: ;behonestbrasil;timestamp
-        # Pode precisar ser usado de forma diferente
+        # Configurar autenticação conforme documentação SULTS
+        # Documentação indica: Authorization: <seu_token_de_acesso>
+        # Testar diferentes formatos
         if self.auth_format == 'bearer':
             self.headers['Authorization'] = f'Bearer {self.token}'
         elif self.auth_format == 'token':
-            self.headers['Authorization'] = f'Token {self.token}'
+            # Formato direto conforme documentação
+            self.headers['Authorization'] = self.token
         elif self.auth_format == 'apikey':
             self.headers['X-API-Key'] = self.token
         elif self.auth_format == 'header':
             self.headers['X-Auth-Token'] = self.token
-        elif self.auth_format == 'decoded':
-            # Tentar usar o token decodificado
-            try:
-                decoded = base64.b64decode(self.token).decode('utf-8')
-                # Formato: ;behonestbrasil;timestamp
-                parts = decoded.split(';')
-                if len(parts) >= 2:
-                    # Pode ser Basic Auth ou outro formato
-                    self.headers['Authorization'] = f'Basic {base64.b64encode(decoded.encode()).decode()}'
-            except:
-                self.headers['Authorization'] = f'Bearer {self.token}'
         else:
-            # Padrão: Bearer Token
-            self.headers['Authorization'] = f'Bearer {self.token}'
+            # Padrão: Token direto no Authorization (conforme documentação)
+            self.headers['Authorization'] = self.token
     
     @staticmethod
     def test_connection(base_url: str, token: str, endpoint: str = "/chamados") -> Dict:

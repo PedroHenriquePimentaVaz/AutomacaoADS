@@ -1799,14 +1799,15 @@ def verificar_sults_leads():
         
         # Testar diferentes URLs base e endpoints
         base_urls = [
-            "https://api.sults.com.br/v1",
             "https://behonestbrasil.sults.com.br/api/v1",
             "https://behonestbrasil.sults.com.br/api",
+            "https://behonestbrasil.sults.com.br/analytics/api",
+            "https://api.sults.com.br/v1",
             "https://app.sults.com.br/api/v1",
             "https://developer.sults.com.br/api/v1"
         ]
         
-        endpoints = ["/chamados", "/leads", "/api/chamados", "/api/leads"]
+        endpoints = ["/chamados", "/leads", "/api/chamados", "/api/leads", "/analytics/empresa/maps", "/analytics/chamados", "/analytics/leads"]
         auth_formats = ['token', 'bearer']
         
         # Tentar diferentes combinações
