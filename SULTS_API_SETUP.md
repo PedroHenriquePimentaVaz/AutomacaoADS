@@ -74,16 +74,46 @@ self.headers = {
 
 ### 6. Testar a Conexão
 
-Execute o script de teste:
+#### Opção A: Via Script Python
+
+Execute o script de diagnóstico completo:
+
+```bash
+.venv/bin/python diagnose_sults_api.py
+```
+
+Ou o script de teste simples:
 
 ```bash
 .venv/bin/python test_sults_connection.py
 ```
 
-Ou teste via API:
+#### Opção B: Via API REST (Recomendado)
+
+Teste diferentes URLs diretamente:
 
 ```bash
+# Teste padrão (usa URL do .env)
 curl http://localhost:5003/api/sults/test
+
+# Testar URL específica
+curl "http://localhost:5003/api/sults/test?base_url=https://api.sults.com.br&endpoint=/chamados"
+
+# Testar outras URLs comuns
+curl "http://localhost:5003/api/sults/test?base_url=https://app.sults.com.br/api&endpoint=/chamados"
+curl "http://localhost:5003/api/sults/test?base_url=https://sults.com.br/api&endpoint=/chamados"
+curl "http://localhost:5003/api/sults/test?base_url=https://api.sults.com.br/v1&endpoint=/chamados"
+```
+
+#### Opção C: Testar Endpoints Diferentes
+
+Se a URL base estiver correta mas o endpoint estiver errado:
+
+```bash
+# Testar diferentes endpoints
+curl "http://localhost:5003/api/sults/test?base_url=https://app.sults.com.br/api&endpoint=/leads"
+curl "http://localhost:5003/api/sults/test?base_url=https://app.sults.com.br/api&endpoint=/tickets"
+curl "http://localhost:5003/api/sults/test?base_url=https://app.sults.com.br/api&endpoint=/unidades"
 ```
 
 ## 🔍 Como Encontrar a URL Correta

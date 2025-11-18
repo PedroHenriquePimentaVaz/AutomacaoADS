@@ -27,8 +27,9 @@ class SultsAPIClient:
     BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://app.sults.com.br/api")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None):
         self.token = token or self.TOKEN
+        self.BASE_URL = base_url or self.BASE_URL
         # TODO: Ajustar formato de autenticação conforme documentação
         # Pode ser Bearer, Basic Auth, ou outro formato
         self.headers = {
@@ -36,6 +37,32 @@ class SultsAPIClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
+    
+    @staticmethod
+    def test_connection(base_url: str, token: str, endpoint: str = "/chamados") -> Dict:
+        """Método estático para testar conexão com diferentes configurações"""
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        url = f"{base_url}{endpoint}"
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            return {
+                'success': response.status_code < 400,
+                'status_code': response.status_code,
+                'url': url,
+                'message': f"Status {response.status_code}" if response.status_code < 400 else f"Erro {response.status_code}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'status_code': None,
+                'url': url,
+                'message': str(e)
+            }
     
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None) -> Dict:
         """Faz uma requisição HTTP para a API da SULTS"""

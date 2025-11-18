@@ -1599,19 +1599,35 @@ def test_sults_connection():
     if not SULTS_AVAILABLE:
         return jsonify({'error': 'Integração SULTS não disponível'}), 503
     
+    # Permitir testar URL customizada via query param
+    test_url = request.args.get('base_url')
+    test_endpoint = request.args.get('endpoint', '/chamados')
+    
     try:
-        client = SultsAPIClient()
-        # Tentar buscar unidades como teste
-        unidades = client.get_unidades()
-        return jsonify({
-            'success': True,
-            'message': 'Conexão com SULTS estabelecida com sucesso',
-            'unidades_count': len(unidades) if isinstance(unidades, list) else 0
-        })
+        if test_url:
+            # Testar URL específica
+            token = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
+            result = SultsAPIClient.test_connection(test_url, token, test_endpoint)
+            return jsonify(result)
+        else:
+            # Teste padrão
+            client = SultsAPIClient()
+            # Tentar buscar unidades como teste
+            unidades = client.get_unidades()
+            return jsonify({
+                'success': True,
+                'message': 'Conexão com SULTS estabelecida com sucesso',
+                'unidades_count': len(unidades) if isinstance(unidades, list) else 0,
+                'base_url': client.BASE_URL
+            })
     except Exception as e:
+        import traceback
+        error_details = str(e)
         return jsonify({
             'success': False,
-            'error': f'Erro ao conectar com SULTS: {str(e)}'
+            'error': f'Erro ao conectar com SULTS: {error_details}',
+            'base_url_used': test_url or os.getenv('SULTS_API_BASE_URL', 'https://app.sults.com.br/api'),
+            'suggestion': 'Tente diferentes URLs base usando: ?base_url=https://api.sults.com.br'
         }), 500
 
 @app.route('/api/sults/chamados', methods=['GET'])
