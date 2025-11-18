@@ -433,10 +433,6 @@ function renderLeadCharts() {
         renderLeadsByCategoryChart(estatisticas.leads_por_categoria);
     }
     
-    // Renderizar gráfico de lojas por UF
-    if (estatisticas.lojas_por_uf && typeof estatisticas.lojas_por_uf === 'object' && Object.keys(estatisticas.lojas_por_uf).length > 0) {
-        renderLojasByUFChart(estatisticas.lojas_por_uf);
-    }
     
     if (leadStatusChart) {
         const statusData = distributions.status || [];
@@ -2119,8 +2115,6 @@ function displaySultsData(data) {
     if (!sultsLeads.estatisticas.leads_por_categoria) sultsLeads.estatisticas.leads_por_categoria = {};
     if (!sultsLeads.estatisticas.leads_por_responsavel) sultsLeads.estatisticas.leads_por_responsavel = {};
     if (!sultsLeads.estatisticas.leads_por_unidade) sultsLeads.estatisticas.leads_por_unidade = {};
-    if (!sultsLeads.estatisticas.lojas_por_uf) sultsLeads.estatisticas.lojas_por_uf = {};
-    if (!sultsLeads.estatisticas.lojas_por_cidade) sultsLeads.estatisticas.lojas_por_cidade = {};
     
     // Combinar todos os leads para exibição
     const allLeads = [
@@ -2166,9 +2160,7 @@ function displaySultsData(data) {
             leads_lost: sultsLeads.resumo.perdidos,
             tag_leads: sultsLeads.resumo.total_leads,
             tag_mqls: 0,
-            mql_to_lead_rate: 0,
-            lojas_ativas: sultsLeads.resumo.lojas_ativas,
-            total_empresas: sultsLeads.resumo.total_empresas
+            mql_to_lead_rate: 0
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
