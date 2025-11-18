@@ -1885,6 +1885,18 @@ def verificar_sults_leads():
             leads_por_unidade = {}
             
             for projeto in projetos:
+                # Verificação final: pular se for loja
+                etapa = projeto.get('etapa', {})
+                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                projeto_nome = projeto.get('nome', '').lower()
+                projeto_titulo = projeto.get('titulo', '').lower()
+                
+                # Excluir qualquer coisa relacionada a lojas
+                if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
+                       for palavra in ['loja', 'lojas', 'extrabom']):
+                    continue
+                
                 status = 'aberto'
                 if projeto.get('concluido'):
                     status = 'ganho'
@@ -1892,10 +1904,7 @@ def verificar_sults_leads():
                     status = 'perdido'
                 
                 # Extrair etapa/fase do projeto
-                etapa = projeto.get('etapa', {})
                 etapa_nome = etapa.get('nome', 'Sem etapa') if isinstance(etapa, dict) else 'Sem etapa'
-                funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
-                funil_nome = funil.get('nome', '') if isinstance(funil, dict) else ''
                 
                 # Extrair categoria
                 categoria = projeto.get('categoria', {})
@@ -1903,14 +1912,12 @@ def verificar_sults_leads():
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
                 # Fase: usar etapa se disponível, senão usar categoria + status
-                # Filtrar lojas do nome da fase
+                # Garantir que não inclui lojas no nome da fase
                 if etapa_nome and etapa_nome != 'Sem etapa':
                     fase = etapa_nome
                     if funil_nome and 'loja' not in funil_nome.lower():
                         fase = f"{funil_nome} - {etapa_nome}"
-                    elif 'loja' in funil_nome.lower():
-                        # Pular este projeto se for de loja
-                        continue
+                    # Se funil contém loja, já foi filtrado acima
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
                 
