@@ -364,28 +364,6 @@ function renderLeadsKPIs() {
         );
     }
     
-    if (kpis.unique_statuses !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Tipos de Status',
-                kpis.unique_statuses.toLocaleString(),
-                'fas fa-sitemap',
-                '#2374b9'
-            )
-        );
-    }
-    
-    if (kpis.unique_sources !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Fontes Distintas',
-                kpis.unique_sources.toLocaleString(),
-                'fas fa-bullhorn',
-                '#edb125'
-            )
-        );
-    }
-    
     if (kpis.tag_leads !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -404,17 +382,6 @@ function renderLeadsKPIs() {
                 kpis.tag_mqls.toLocaleString(),
                 'fas fa-user-check',
                 '#10B981'
-            )
-        );
-    }
-    
-    if (kpis.leads_without_date !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Sem Data',
-                kpis.leads_without_date.toLocaleString(),
-                'fas fa-question-circle',
-                '#6B7280'
             )
         );
     }
