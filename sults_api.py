@@ -22,9 +22,9 @@ class SultsAPIClient:
     - Projetos
     """
     
-    # TODO: Ajustar URL base conforme documentação oficial
-    # Possíveis URLs: https://api.sults.com.br, https://sults.com.br/api, https://app.sults.com.br/api
-    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://app.sults.com.br/api")
+    # URL base da API SULTS conforme documentação: https://developers.sults.com.br/
+    # Documentação oficial indica: https://developer.sults.com.br/api/v1
+    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://developer.sults.com.br/api/v1")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None):
@@ -100,15 +100,25 @@ class SultsAPIClient:
             raise Exception(error_msg) from e
     
     def get_chamados(self, filters: Optional[Dict] = None) -> List[Dict]:
-        """Busca chamados (tickets/leads) da SULTS"""
-        # Endpoint pode ser /chamados, /api/chamados, /v1/chamados - ajustar conforme doc
+        """Busca chamados da SULTS - endpoint conforme documentação: /chamados"""
         endpoint = "/chamados"
+        params = filters or {}
+        return self._make_request('GET', endpoint, params=params)
+    
+    def get_leads(self, filters: Optional[Dict] = None) -> List[Dict]:
+        """Busca leads da SULTS - endpoint conforme documentação: /leads"""
+        endpoint = "/leads"
         params = filters or {}
         return self._make_request('GET', endpoint, params=params)
     
     def get_chamado_by_id(self, chamado_id: int) -> Dict:
         """Busca um chamado específico por ID"""
         endpoint = f"/chamados/{chamado_id}"
+        return self._make_request('GET', endpoint)
+    
+    def get_lead_by_id(self, lead_id: int) -> Dict:
+        """Busca um lead específico por ID"""
+        endpoint = f"/leads/{lead_id}"
         return self._make_request('GET', endpoint)
     
     def get_unidades(self, filters: Optional[Dict] = None) -> List[Dict]:
@@ -124,26 +134,31 @@ class SultsAPIClient:
         return self._make_request('GET', endpoint, params=params)
     
     def get_leads_status(self, date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
-        """Busca status de leads/chamados em um período"""
+        """Busca status de leads em um período"""
         filters = {}
         if date_from:
             filters['data_inicio'] = date_from
         if date_to:
             filters['data_fim'] = date_to
         
-        chamados = self.get_chamados(filters=filters)
+        # Usar endpoint /leads conforme documentação
+        try:
+            leads = self.get_leads(filters=filters)
+        except:
+            # Fallback para chamados se /leads não existir
+            leads = self.get_chamados(filters=filters)
         
         # Processar estatísticas
-        total = len(chamados)
+        total = len(leads)
         status_count = {}
-        for chamado in chamados:
-            status = chamado.get('status', 'Sem Status')
+        for lead in leads:
+            status = lead.get('status', 'Sem Status')
             status_count[status] = status_count.get(status, 0) + 1
         
         return {
             'total': total,
             'por_status': status_count,
-            'chamados': chamados
+            'leads': leads
         }
     
     def get_leads_by_status(self, status_filter: Optional[str] = None) -> Dict:
@@ -153,7 +168,12 @@ class SultsAPIClient:
         Args:
             status_filter: Filtro opcional de status ('aberto', 'perdido', 'ganho', etc.)
         """
-        chamados = self.get_chamados()
+        # Usar endpoint /leads conforme documentação
+        try:
+            leads_data = self.get_leads()
+        except:
+            # Fallback para chamados se /leads não existir
+            leads_data = self.get_chamados()
         
         # Categorizar leads por status
         leads_abertos = []
@@ -167,17 +187,17 @@ class SultsAPIClient:
             'ganho': ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
         }
         
-        for chamado in chamados:
-            status = str(chamado.get('status', '')).lower()
+        for lead in leads_data:
+            status = str(lead.get('status', '')).lower()
             
             if any(keyword in status for keyword in status_keywords['ganho']):
-                leads_ganhos.append(chamado)
+                leads_ganhos.append(lead)
             elif any(keyword in status for keyword in status_keywords['perdido']):
-                leads_perdidos.append(chamado)
+                leads_perdidos.append(lead)
             elif any(keyword in status for keyword in status_keywords['aberto']):
-                leads_abertos.append(chamado)
+                leads_abertos.append(lead)
             else:
-                leads_outros.append(chamado)
+                leads_outros.append(lead)
         
         # Aplicar filtro se especificado
         if status_filter:
@@ -206,12 +226,12 @@ class SultsAPIClient:
                 'leads': leads_outros,
                 'total': len(leads_outros)
             },
-            'total_geral': len(chamados)
+            'total_geral': len(leads_data)
         }
     
     def sync_lead_with_sults(self, lead_data: Dict) -> Dict:
-        """Sincroniza um lead com a SULTS (cria ou atualiza chamado)"""
-        endpoint = "/chamados"
+        """Sincroniza um lead com a SULTS (cria ou atualiza lead)"""
+        endpoint = "/leads"
         
         # Mapear dados do lead para formato da SULTS
         sults_data = {
