@@ -1822,46 +1822,45 @@ def verificar_sults_leads():
         ]
         
         for base_url, endpoint, auth_format in priority_combinations:
-                    
-                    try:
-                        client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
-                        leads_data = client.get_leads_by_status()
-                        
-                        # Se chegou aqui, funcionou!
-                        resultado = {
-                            'token_status': token_status,
-                            'token_preview': token[:20] + '...' if len(token) > 20 else token,
-                            'base_url': base_url,
-                            'endpoint_used': endpoint,
-                            'auth_format': auth_format,
-                            'timestamp': datetime.now().isoformat(),
-                            'leads': {
-                                'abertos': {
-                                    'total': len(leads_data.get('abertos', {}).get('leads', [])) if isinstance(leads_data.get('abertos'), dict) else (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0),
-                                    'dados': (leads_data.get('abertos', {}).get('leads', [])[:10] if isinstance(leads_data.get('abertos'), dict) else leads_data.get('abertos', [])[:10]) if isinstance(leads_data.get('abertos'), (dict, list)) else []
-                                },
-                                'perdidos': {
-                                    'total': len(leads_data.get('perdidos', {}).get('leads', [])) if isinstance(leads_data.get('perdidos'), dict) else (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0),
-                                    'dados': (leads_data.get('perdidos', {}).get('leads', [])[:10] if isinstance(leads_data.get('perdidos'), dict) else leads_data.get('perdidos', [])[:10]) if isinstance(leads_data.get('perdidos'), (dict, list)) else []
-                                },
-                                'ganhos': {
-                                    'total': len(leads_data.get('ganhos', {}).get('leads', [])) if isinstance(leads_data.get('ganhos'), dict) else (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0),
-                                    'dados': (leads_data.get('ganhos', {}).get('leads', [])[:10] if isinstance(leads_data.get('ganhos'), dict) else leads_data.get('ganhos', [])[:10]) if isinstance(leads_data.get('ganhos'), (dict, list)) else []
-                                }
-                            },
-                            'resumo': {
-                                'total_leads': leads_data.get('total_geral', 0)
-                            }
+            try:
+                client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
+                leads_data = client.get_leads_by_status()
+                
+                # Se chegou aqui, funcionou!
+                resultado = {
+                    'token_status': token_status,
+                    'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                    'base_url': base_url,
+                    'endpoint_used': endpoint,
+                    'auth_format': auth_format,
+                    'timestamp': datetime.now().isoformat(),
+                    'leads': {
+                        'abertos': {
+                            'total': len(leads_data.get('abertos', {}).get('leads', [])) if isinstance(leads_data.get('abertos'), dict) else (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0),
+                            'dados': (leads_data.get('abertos', {}).get('leads', [])[:10] if isinstance(leads_data.get('abertos'), dict) else leads_data.get('abertos', [])[:10]) if isinstance(leads_data.get('abertos'), (dict, list)) else []
+                        },
+                        'perdidos': {
+                            'total': len(leads_data.get('perdidos', {}).get('leads', [])) if isinstance(leads_data.get('perdidos'), dict) else (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0),
+                            'dados': (leads_data.get('perdidos', {}).get('leads', [])[:10] if isinstance(leads_data.get('perdidos'), dict) else leads_data.get('perdidos', [])[:10]) if isinstance(leads_data.get('perdidos'), (dict, list)) else []
+                        },
+                        'ganhos': {
+                            'total': len(leads_data.get('ganhos', {}).get('leads', [])) if isinstance(leads_data.get('ganhos'), dict) else (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0),
+                            'dados': (leads_data.get('ganhos', {}).get('leads', [])[:10] if isinstance(leads_data.get('ganhos'), dict) else leads_data.get('ganhos', [])[:10]) if isinstance(leads_data.get('ganhos'), (dict, list)) else []
                         }
-                        
-                        return jsonify({
-                            'success': True,
-                            'message': f'✅ Conexão com SULTS funcionando! (URL: {base_url}{endpoint})',
-                            'data': resultado
-                        })
-                    except Exception as test_error:
-                        tested_combinations.append(f"{base_url}{endpoint} ({auth_format})")
-                        continue
+                    },
+                    'resumo': {
+                        'total_leads': leads_data.get('total_geral', 0)
+                    }
+                }
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'✅ Conexão com SULTS funcionando! (URL: {base_url}{endpoint})',
+                    'data': resultado
+                })
+            except Exception as test_error:
+                tested_combinations.append(f"{base_url}{endpoint} ({auth_format})")
+                continue
         
         # Se nenhuma combinação funcionou, retornar erro
         return jsonify({
