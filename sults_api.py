@@ -23,7 +23,8 @@ class SultsAPIClient:
     """
     
     # TODO: Ajustar URL base conforme documentação oficial
-    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://api.sults.com.br")
+    # Possíveis URLs: https://api.sults.com.br, https://sults.com.br/api, https://app.sults.com.br/api
+    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://app.sults.com.br/api")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
     def __init__(self, token: Optional[str] = None):
@@ -51,32 +52,47 @@ class SultsAPIClient:
             )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Erro na requisição à API SULTS: {str(e)}")
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Erro HTTP {e.response.status_code} na requisição à API SULTS"
+            if e.response.status_code == 404:
+                error_msg += f"\nEndpoint não encontrado: {url}"
+                error_msg += "\nVerifique a URL base e os endpoints na documentação: https://developers.sults.com.br/"
+            elif e.response.status_code == 401:
+                error_msg += "\nToken de autenticação inválido ou expirado"
+            elif e.response.status_code == 403:
+                error_msg += "\nAcesso negado. Verifique as permissões do token"
+            
             if hasattr(e.response, 'text'):
-                print(f"Resposta do servidor: {e.response.text}")
-            raise
+                error_msg += f"\nResposta do servidor: {e.response.text[:200]}"
+            
+            print(error_msg)
+            raise Exception(error_msg) from e
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Erro na requisição à API SULTS: {str(e)}"
+            print(error_msg)
+            raise Exception(error_msg) from e
     
     def get_chamados(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Busca chamados (tickets/leads) da SULTS"""
-        endpoint = "/api/chamados"
+        # Endpoint pode ser /chamados, /api/chamados, /v1/chamados - ajustar conforme doc
+        endpoint = "/chamados"
         params = filters or {}
         return self._make_request('GET', endpoint, params=params)
     
     def get_chamado_by_id(self, chamado_id: int) -> Dict:
         """Busca um chamado específico por ID"""
-        endpoint = f"/api/chamados/{chamado_id}"
+        endpoint = f"/chamados/{chamado_id}"
         return self._make_request('GET', endpoint)
     
     def get_unidades(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Busca unidades da SULTS"""
-        endpoint = "/api/unidades"
+        endpoint = "/unidades"
         params = filters or {}
         return self._make_request('GET', endpoint, params=params)
     
     def get_projetos(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Busca projetos da SULTS"""
-        endpoint = "/api/projetos"
+        endpoint = "/projetos"
         params = filters or {}
         return self._make_request('GET', endpoint, params=params)
     
@@ -168,7 +184,7 @@ class SultsAPIClient:
     
     def sync_lead_with_sults(self, lead_data: Dict) -> Dict:
         """Sincroniza um lead com a SULTS (cria ou atualiza chamado)"""
-        endpoint = "/api/chamados"
+        endpoint = "/chamados"
         
         # Mapear dados do lead para formato da SULTS
         sults_data = {
