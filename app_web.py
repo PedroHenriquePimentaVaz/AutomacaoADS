@@ -1860,20 +1860,21 @@ def verificar_sults_leads():
                 etapa = projeto.get('etapa', {})
                 funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
                 funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                funil_id = funil.get('id') if isinstance(funil, dict) else None
                 projeto_nome = projeto.get('nome', '').lower()
                 projeto_titulo = projeto.get('titulo', '').lower()
                 
                 # Excluir qualquer coisa relacionada a lojas
                 if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
-                       for palavra in ['loja', 'lojas', 'extrabom', '[es]', '[mg]']):
+                       for palavra in ['loja', 'lojas', 'extrabom']):
                     continue
                 
-                # Incluir apenas se for franqueado
-                if 'franqueado' in funil_nome or 'franqueado' in projeto_nome or 'franqueado' in projeto_titulo or (funil.get('id') == 1 if isinstance(funil, dict) else False):
+                # Incluir apenas se for franqueado (funil ID 1 ou nome contém franqueado)
+                if funil_id == 1 or 'franqueado' in funil_nome or 'franqueado' in projeto_nome or 'franqueado' in projeto_titulo:
                     projetos_filtrados_final.append(projeto)
             
             projetos = projetos_filtrados_final
-            print(f"✅ Após filtro final: {len(projetos)} projetos de franqueados (sem lojas)")
+            print(f"✅ Após filtro final: {len(projetos)} negócios de franqueados (sem lojas)")
             
             # Transformar projetos em leads para exibição
             leads_abertos = []
@@ -1950,9 +1951,32 @@ def verificar_sults_leads():
                     email = contato_empresa.get('email', '')
                     telefone = contato_empresa.get('phone', '')
                 
+                # Determinar status baseado na situação do negócio
+                situacao = projeto.get('situacao', {})
+                situacao_nome = situacao.get('nome', '').upper() if isinstance(situacao, dict) else ''
+                situacao_id = situacao.get('id') if isinstance(situacao, dict) else None
+                
+                # Mapear situação para status
+                if situacao_id == 2 or situacao_nome == 'GANHO':
+                    status = 'ganho'
+                elif situacao_id == 3 or situacao_nome == 'PERDA':
+                    status = 'perdido'
+                elif situacao_id == 4 or situacao_nome == 'ADIADO':
+                    status = 'aberto'
+                elif situacao_id == 1 or situacao_nome == 'ANDAMENTO':
+                    status = 'aberto'
+                # Se não tiver situação definida, usar lógica anterior
+                elif not situacao_id:
+                    if projeto.get('concluido'):
+                        status = 'ganho'
+                    elif projeto.get('pausado'):
+                        status = 'perdido'
+                    else:
+                        status = 'aberto'
+                
                 lead_data = {
                     'id': projeto.get('id'),
-                    'nome': projeto.get('nome') or projeto.get('titulo', 'Sem nome'),
+                    'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
                     'email': email,
                     'telefone': telefone,
                     'responsavel': responsavel_nome,
@@ -1962,11 +1986,17 @@ def verificar_sults_leads():
                     'etapa': etapa_nome,
                     'funil': funil_nome,
                     'status': status,
-                    'ativo': projeto.get('ativo', False),
-                    'data_criacao': projeto.get('dtCriacao', '') or projeto.get('dtCadastro', ''),
+                    'situacao': situacao_nome,
+                    'ativo': True,  # Negócios ativos são os que não estão concluídos/perdidos
+                    'data_criacao': projeto.get('dtCadastro', '') or projeto.get('dtCriacao', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
-                    'data_fim': projeto.get('dtFim', '') or projeto.get('dtConclusao', ''),
-                    'origem': 'SULTS - Franqueados'
+                    'data_fim': projeto.get('dtConclusao', '') or projeto.get('dtFim', ''),
+                    'cidade': projeto.get('cidade', ''),
+                    'uf': projeto.get('uf', ''),
+                    'valor': projeto.get('valor', 0.0),
+                    'origem': projeto.get('origem', {}).get('nome', 'SULTS') if isinstance(projeto.get('origem'), dict) else 'SULTS',
+                    'temperatura': projeto.get('temperatura', {}).get('nome', '') if isinstance(projeto.get('temperatura'), dict) else '',
+                    'origem_tipo': 'SULTS - Franqueados'
                 }
                 
                 if status == 'aberto':

@@ -290,37 +290,48 @@ class SultsAPIClient:
         return response if isinstance(response, list) else []
     
     def get_negocios_franqueados(self, filters: Optional[Dict] = None) -> List[Dict]:
-        """Busca negócios de franqueados da SULTS via endpoint de expansão"""
-        # Tentar endpoint de expansão/negócios
-        base_urls = [
-            "https://behonestbrasil.sults.com.br",
-            "https://api.sults.com.br/api/v1",
-            "https://api.sults.com.br/v1"
-        ]
-        
-        endpoints = ["/expansao/negocio/0", "/expansao/negocio", "/negocio/franqueados", "/franqueados"]
+        """Busca negócios de franqueados da SULTS via endpoint de expansão/negocio"""
+        endpoint = "/expansao/negocio"
         params = filters or {}
         
-        for base_url in base_urls:
-            for endpoint in endpoints:
-                try:
-                    url = f"{base_url}{endpoint}"
-                    headers = self.headers.copy()
-                    response = requests.get(url, headers=headers, params=params, timeout=10)
-                    
-                    if response.status_code == 200:
-                        try:
-                            data = response.json()
-                            if isinstance(data, dict) and 'data' in data:
-                                return data['data']
-                            elif isinstance(data, list):
-                                return data
-                        except:
-                            continue
-                except:
-                    continue
+        # Adicionar parâmetros padrão de paginação se não especificados
+        if 'start' not in params:
+            params['start'] = 0
+        if 'limit' not in params:
+            params['limit'] = 100
         
-        return []
+        # Filtrar por funil de franqueados (ID 1 geralmente é Franqueados)
+        if 'funil' not in params:
+            params['funil'] = 1
+        
+        # Ajustar headers conforme documentação
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json;charset=UTF-8'
+        
+        try:
+            response = self._make_request('GET', endpoint, params=params)
+            
+            # A API retorna {'data': [...], 'start': 0, 'limit': 100, 'size': 57, 'totalPage': 1}
+            if isinstance(response, dict) and 'data' in response:
+                negocios = response['data']
+                
+                # Se houver mais páginas, buscar todas
+                total_pages = response.get('totalPage', 1)
+                if total_pages > 1:
+                    all_negocios = negocios.copy()
+                    for page in range(1, total_pages):
+                        params['start'] = page
+                        page_response = self._make_request('GET', endpoint, params=params)
+                        if isinstance(page_response, dict) and 'data' in page_response:
+                            all_negocios.extend(page_response['data'])
+                    return all_negocios
+                
+                return negocios
+            
+            return response if isinstance(response, list) else []
+        except Exception as e:
+            print(f"Erro ao buscar negócios de franqueados: {e}")
+            return []
     
     def get_leads_status(self, date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
         """Busca status de leads em um período"""
