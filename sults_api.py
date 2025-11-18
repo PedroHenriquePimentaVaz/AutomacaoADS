@@ -41,6 +41,8 @@ class SultsAPIClient:
         }
         
         # Configurar autenticação conforme formato
+        # O token parece ser base64 que decodifica para: ;behonestbrasil;timestamp
+        # Pode precisar ser usado de forma diferente
         if self.auth_format == 'bearer':
             self.headers['Authorization'] = f'Bearer {self.token}'
         elif self.auth_format == 'token':
@@ -49,6 +51,17 @@ class SultsAPIClient:
             self.headers['X-API-Key'] = self.token
         elif self.auth_format == 'header':
             self.headers['X-Auth-Token'] = self.token
+        elif self.auth_format == 'decoded':
+            # Tentar usar o token decodificado
+            try:
+                decoded = base64.b64decode(self.token).decode('utf-8')
+                # Formato: ;behonestbrasil;timestamp
+                parts = decoded.split(';')
+                if len(parts) >= 2:
+                    # Pode ser Basic Auth ou outro formato
+                    self.headers['Authorization'] = f'Basic {base64.b64encode(decoded.encode()).decode()}'
+            except:
+                self.headers['Authorization'] = f'Bearer {self.token}'
         else:
             # Padrão: Bearer Token
             self.headers['Authorization'] = f'Bearer {self.token}'
@@ -82,7 +95,9 @@ class SultsAPIClient:
     
     def _try_different_auth_formats(self, endpoint: str) -> Optional[Dict]:
         """Tenta diferentes formatos de autenticação automaticamente"""
-        auth_formats = ['bearer', 'token', 'apikey', 'header']
+        # O token decodificado é: ;behonestbrasil;timestamp
+        # Pode precisar ser usado como cookie, Basic Auth, ou outro formato
+        auth_formats = ['bearer', 'token', 'apikey', 'header', 'decoded', 'url_param', 'cookie']
         
         for auth_format in auth_formats:
             try:
@@ -92,6 +107,8 @@ class SultsAPIClient:
                 temp_headers.pop('X-API-Key', None)
                 temp_headers.pop('X-Auth-Token', None)
                 
+                url = f"{self.BASE_URL}{endpoint}"
+                
                 if auth_format == 'bearer':
                     temp_headers['Authorization'] = f'Bearer {self.token}'
                 elif auth_format == 'token':
@@ -100,9 +117,36 @@ class SultsAPIClient:
                     temp_headers['X-API-Key'] = self.token
                 elif auth_format == 'header':
                     temp_headers['X-Auth-Token'] = self.token
+                elif auth_format == 'decoded':
+                    # Tentar usar token decodificado como Basic Auth
+                    try:
+                        decoded = base64.b64decode(self.token).decode('utf-8')
+                        # Formato: ;behonestbrasil;timestamp
+                        parts = decoded.split(';')
+                        if len(parts) >= 2:
+                            # Tentar como Basic Auth
+                            encoded = base64.b64encode(decoded.encode()).decode()
+                            temp_headers['Authorization'] = f'Basic {encoded}'
+                    except:
+                        continue
+                elif auth_format == 'url_param':
+                    # Tentar token como parâmetro na URL
+                    url = f"{self.BASE_URL}{endpoint}?token={self.token}"
+                elif auth_format == 'cookie':
+                    # Tentar token como cookie
+                    # O token decodificado é: ;behonestbrasil;timestamp
+                    try:
+                        decoded = base64.b64decode(self.token).decode('utf-8')
+                        # Pode ser que precise ser usado como cookie de sessão
+                        cookies = {'token': self.token, 'auth_token': self.token}
+                    except:
+                        cookies = {'token': self.token}
                 
-                url = f"{self.BASE_URL}{endpoint}"
-                response = requests.get(url, headers=temp_headers, timeout=10, allow_redirects=False)
+                # Fazer requisição com ou sem cookies
+                if auth_format == 'cookie':
+                    response = requests.get(url, headers=temp_headers, cookies=cookies, timeout=10, allow_redirects=False)
+                else:
+                    response = requests.get(url, headers=temp_headers, timeout=10, allow_redirects=False)
                 
                 # Se retornar JSON, esse formato funciona
                 if response.status_code == 200 and 'application/json' in response.headers.get('Content-Type', ''):
