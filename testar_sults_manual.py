@@ -6,9 +6,13 @@ Execute este script e me envie o resultado completo
 
 import requests
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# Tentar carregar dotenv se disponível
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
 
@@ -55,10 +59,24 @@ for base_url in BASE_URLS:
             headers.update(auth_format.get('header', {}))
             
             try:
+                # Primeiro teste sem seguir redirecionamentos
                 response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
                 content_type = response.headers.get('Content-Type', '')
                 is_json = 'application/json' in content_type
                 is_html = 'text/html' in content_type or 'text/xml' in content_type
+                
+                # Se for redirecionamento, tentar seguir
+                redirect_url = None
+                if response.status_code in [301, 302, 303, 307, 308]:
+                    redirect_url = response.headers.get('Location', '')
+                    # Tentar seguir o redirecionamento
+                    try:
+                        response_follow = requests.get(redirect_url, headers=headers, timeout=10, allow_redirects=True)
+                        if 'application/json' in response_follow.headers.get('Content-Type', ''):
+                            response = response_follow
+                            is_json = True
+                    except:
+                        pass
                 
                 status = "✅ SUCESSO" if is_json and response.status_code == 200 else "❌ FALHOU"
                 
@@ -70,12 +88,14 @@ for base_url in BASE_URLS:
                     'content_type': content_type,
                     'is_json': is_json,
                     'is_html': is_html,
+                    'redirect_url': redirect_url,
                     'response_preview': response.text[:200] if response.text else ''
                 }
                 
                 results.append(result)
                 
-                print(f"{status} | {auth_format['name']:15} | {response.status_code:3} | {content_type[:30]:30} | {url}")
+                redirect_info = f" → {redirect_url[:40]}..." if redirect_url else ""
+                print(f"{status} | {auth_format['name']:15} | {response.status_code:3} | {content_type[:30]:30} | {url}{redirect_info}")
                 
                 if is_json and response.status_code == 200:
                     print(f"   🎉 FUNCIONOU! URL: {url}")
