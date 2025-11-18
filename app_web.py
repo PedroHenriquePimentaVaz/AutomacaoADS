@@ -1982,7 +1982,7 @@ def verificar_sults_leads():
                     'email': email,
                     'telefone': telefone,
                     'responsavel': responsavel_nome,
-                    'unidade': unidade_nome,
+                    'unidade': unidade_nome or contato_empresa.get('nomeFantasia', '') if isinstance(contato_empresa, dict) else '',
                     'categoria': categoria_nome,
                     'fase': fase,
                     'etapa': etapa_nome,
