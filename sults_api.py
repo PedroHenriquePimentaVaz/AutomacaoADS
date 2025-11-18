@@ -24,8 +24,9 @@ class SultsAPIClient:
     """
     
     # URL base da API SULTS conforme documentação: https://developers.sults.com.br/
-    # Base URL: https://behonestbrasil.sults.com.br/api/v1
-    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://behonestbrasil.sults.com.br/api/v1")
+    # Documentação oficial indica: https://api.sults.com.br/v1
+    # Exemplo: https://api.sults.com.br/v1/empresas
+    BASE_URL = os.getenv('SULTS_API_BASE_URL', "https://api.sults.com.br/v1")
     TOKEN = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
     
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, auth_format: str = 'bearer'):

@@ -1814,11 +1814,15 @@ def verificar_sults_leads():
         # Testar apenas as combinações mais prováveis
         tested_combinations = []
         
-        # Tentar apenas as 2 primeiras combinações mais prováveis
+        # Tentar combinações conforme documentação oficial: https://developers.sults.com.br/
+        # Base URL oficial: https://api.sults.com.br/v1
+        # Autenticação: Token direto no header Authorization (sem "Bearer")
         priority_combinations = [
-            ("https://behonestbrasil.sults.com.br/api/v1", "/chamados", "token"),
-            ("https://behonestbrasil.sults.com.br/api/v1", "/leads", "token"),
-            ("https://behonestbrasil.sults.com.br/api", "/chamados", "token"),
+            ("https://api.sults.com.br/v1", "/chamados", "token"),
+            ("https://api.sults.com.br/v1", "/leads", "token"),
+            ("https://api.sults.com.br/v1", "/empresas", "token"),
+            ("https://api.sults.com.br/api/v1", "/chamados", "token"),
+            ("https://api.sults.com.br/api/v1", "/leads", "token"),
         ]
         
         for base_url, endpoint, auth_format in priority_combinations:
