@@ -1859,19 +1859,31 @@ def verificar_sults_leads():
                     'data': resultado
                 })
             except Exception as test_error:
-                tested_combinations.append(f"{base_url}{endpoint} ({auth_format})")
+                error_msg = str(test_error)[:200]  # Limitar tamanho do erro
+                tested_combinations.append({
+                    'url': f"{base_url}{endpoint}",
+                    'auth_format': auth_format,
+                    'error': error_msg
+                })
+                print(f"❌ Falhou: {base_url}{endpoint} ({auth_format}) - {error_msg}")
                 continue
         
-        # Se nenhuma combinação funcionou, retornar erro
+        # Se nenhuma combinação funcionou, retornar erro detalhado
         return jsonify({
             'success': False,
             'token_status': token_status,
             'token_preview': token[:20] + '...' if len(token) > 20 else token,
-            'error': 'Nenhuma combinação de URL/endpoint funcionou após testar várias opções',
-            'sugestao': 'A API SULTS pode não estar acessível via REST ou requer autenticação diferente. Verifique a documentação em https://developers.sults.com.br/',
-            'tested_combinations': len(tested_combinations),
-            'tested_urls': tested_combinations,
-            'message': 'Por favor, verifique na documentação da SULTS qual é a URL base correta e o formato de autenticação necessário'
+            'error': 'Nenhuma combinação de URL/endpoint funcionou',
+            'message': 'A API SULTS pode não estar acessível via REST tradicional ou requer autenticação diferente',
+            'sugestao': 'Verifique a documentação em https://developers.sults.com.br/ ou entre em contato com o suporte da SULTS',
+            'tested_combinations': tested_combinations,
+            'total_tested': len(tested_combinations),
+            'next_steps': [
+                '1. Verifique na documentação da SULTS a URL base correta',
+                '2. Confirme o formato de autenticação (Bearer, Token, API Key, etc.)',
+                '3. Verifique se o token está ativo e tem as permissões necessárias',
+                '4. Tente acessar a API manualmente via curl ou Postman para testar'
+            ]
         }), 500
             
     except Exception as e:
