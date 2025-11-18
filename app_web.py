@@ -1715,7 +1715,29 @@ def get_sults_chamados():
 def get_sults_leads_status():
     """Busca leads da SULTS organizados por status (abertos, perdidos, ganhos)"""
     if not SULTS_AVAILABLE:
-        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+        return jsonify({
+            'success': False,
+            'error': 'Integração SULTS não disponível',
+            'message': 'Módulo sults_api não encontrado'
+        }), 503
+    
+    # Verificar se a API está configurada corretamente
+    base_url = os.getenv('SULTS_API_BASE_URL', '')
+    if not base_url or base_url == 'https://app.sults.com.br/api':
+        # Se ainda estiver usando a URL padrão que não funciona, retornar erro informativo
+        return jsonify({
+            'success': False,
+            'error': 'API SULTS não configurada corretamente',
+            'message': 'A URL base da API SULTS precisa ser configurada. Todas as URLs testadas retornaram 404.',
+            'instructions': {
+                'step1': 'Acesse a documentação: https://developers.sults.com.br/',
+                'step2': 'Encontre a URL base correta da API',
+                'step3': 'Configure no arquivo .env: SULTS_API_BASE_URL=https://url-correta-aqui',
+                'step4': 'Verifique também o formato de autenticação e os endpoints disponíveis',
+                'step5': 'Reinicie o servidor após configurar'
+            },
+            'test_endpoint': '/api/sults/test-all'
+        }), 503
     
     try:
         client = SultsAPIClient()
@@ -1730,9 +1752,25 @@ def get_sults_leads_status():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        error_msg = str(e)
+        
+        # Se for erro 404, dar instruções mais claras
+        if '404' in error_msg:
+            return jsonify({
+                'success': False,
+                'error': f'Erro ao buscar leads da SULTS: {error_msg}',
+                'message': 'A URL base ou os endpoints estão incorretos',
+                'instructions': {
+                    'step1': 'Execute: curl http://localhost:5003/api/sults/test-all',
+                    'step2': 'Ou consulte a documentação: https://developers.sults.com.br/',
+                    'step3': 'Configure a URL correta no arquivo .env',
+                    'step4': 'Entre em contato com o suporte da SULTS se necessário'
+                }
+            }), 500
+        
         return jsonify({
             'success': False,
-            'error': f'Erro ao buscar leads da SULTS: {str(e)}'
+            'error': f'Erro ao buscar leads da SULTS: {error_msg}'
         }), 500
 
 @app.route('/api/sults/sync-lead', methods=['POST'])
