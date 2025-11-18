@@ -2062,7 +2062,9 @@ function displaySultsData(data) {
             origem: lead.origem || lead.source || 'SULTS',
             data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
             responsavel: lead.responsavel || '',
-            unidade: lead.unidade || ''
+            unidade: lead.unidade || '',
+            fase: lead.fase || '',
+            categoria: lead.categoria || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
