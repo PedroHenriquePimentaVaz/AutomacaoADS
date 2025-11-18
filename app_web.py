@@ -1978,8 +1978,8 @@ def verificar_sults_leads():
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 # Extrair informações de contato (para negócios de franqueados)
+                # contato_empresa já foi definido acima
                 contato_pessoa = projeto.get('contatoPessoa', [])
-                contato_empresa = projeto.get('contatoEmpresa', {})
                 
                 # Pegar primeiro contato se houver
                 email = ''
@@ -2014,8 +2014,15 @@ def verificar_sults_leads():
                         status = 'ganho'
                     elif projeto.get('pausado'):
                         status = 'perdido'
-                    else:
-                        status = 'aberto'
+                else:
+                    status = 'aberto'
+                
+                # Extrair etiquetas
+                etiquetas_nomes = []
+                if etiquetas and isinstance(etiquetas, list):
+                    for etiqueta in etiquetas:
+                        if isinstance(etiqueta, dict):
+                            etiquetas_nomes.append(etiqueta.get('nome', ''))
                 
                 lead_data = {
                     'id': projeto.get('id'),

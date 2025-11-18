@@ -2049,6 +2049,19 @@ function displaySultsData(data) {
     console.log('Leads abertos:', sultsLeads.resumo.abertos);
     console.log('Leads perdidos:', sultsLeads.resumo.perdidos);
     console.log('Leads ganhos:', sultsLeads.resumo.ganhos);
+    console.log('Leads MQL:', sultsLeads.resumo.mql);
+    
+    // Remover duplicatas baseado no ID
+    const uniqueLeads = [];
+    const seenIds = new Set();
+    for (const lead of allLeads) {
+        if (lead.id && !seenIds.has(lead.id)) {
+            seenIds.add(lead.id);
+            uniqueLeads.push(lead);
+        } else if (!lead.id) {
+            uniqueLeads.push(lead);
+        }
+    }
     
     // Criar dados no formato esperado pelo dashboard
     currentLeadsData = {
@@ -2068,7 +2081,9 @@ function displaySultsData(data) {
             fase: lead.fase || '',
             categoria: lead.categoria || '',
             etapa: lead.etapa || '',
-            funil: lead.funil || ''
+            funil: lead.funil || '',
+            etiquetas: lead.etiquetas || [],
+            tem_mql: lead.tem_mql || false
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
