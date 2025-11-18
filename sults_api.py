@@ -281,9 +281,13 @@ class SultsAPIClient:
     
     def get_projetos(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Busca projetos da SULTS"""
-        endpoint = "/projetos"
+        endpoint = "/projeto"
         params = filters or {}
-        return self._make_request('GET', endpoint, params=params)
+        response = self._make_request('GET', endpoint, params=params)
+        # A API retorna {'data': [...], 'start': 0, 'limit': 100, 'size': 57, 'totalPage': 1}
+        if isinstance(response, dict) and 'data' in response:
+            return response['data']
+        return response if isinstance(response, list) else []
     
     def get_leads_status(self, date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
         """Busca status de leads em um período"""

@@ -1693,6 +1693,8 @@ async function handleSultsDataLoad() {
 }
 
 function displaySultsData(data) {
+    console.log('Dados recebidos da SULTS:', data);
+    
     // Criar estrutura de dados similar ao formato de leads
     const sultsLeads = {
         leads: {
@@ -1715,6 +1717,11 @@ function displaySultsData(data) {
         ...(sultsLeads.leads.ganhos || [])
     ];
     
+    console.log('Total de leads processados:', allLeads.length);
+    console.log('Leads abertos:', sultsLeads.resumo.abertos);
+    console.log('Leads perdidos:', sultsLeads.resumo.perdidos);
+    console.log('Leads ganhos:', sultsLeads.resumo.ganhos);
+    
     // Criar dados no formato esperado pelo dashboard
     currentLeadsData = {
         total_leads: sultsLeads.resumo.total_leads,
@@ -1726,8 +1733,10 @@ function displaySultsData(data) {
             email: lead.email || '',
             telefone: lead.telefone || lead.phone || '',
             status: lead.status || 'Sem status',
-            origem: lead.origem || lead.source || 'sults',
-            data: lead.data || lead.date || new Date().toISOString().split('T')[0]
+            origem: lead.origem || lead.source || 'SULTS',
+            data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
+            responsavel: lead.responsavel || '',
+            unidade: lead.unidade || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
@@ -1748,6 +1757,8 @@ function displaySultsData(data) {
     };
     
     filteredLeadsData = currentLeadsData;
+    
+    console.log('Dados finais preparados:', currentLeadsData);
     
     // Exibir no dashboard de leads
     showLeadsDashboard();

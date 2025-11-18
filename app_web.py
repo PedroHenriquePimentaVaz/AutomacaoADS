@@ -1814,19 +1814,104 @@ def verificar_sults_leads():
         # Testar apenas as combinações mais prováveis
         tested_combinations = []
         
-        # Tentar combinações conforme documentação oficial: https://developers.sults.com.br/
-        # Base URL oficial: https://api.sults.com.br/api/v1 (confirmado funcionando com /projeto)
-        # Autenticação: Token direto no header Authorization (sem "Bearer")
-        priority_combinations = [
-            ("https://api.sults.com.br/api/v1", "/negocio", "token"),
-            ("https://api.sults.com.br/api/v1", "/negocios", "token"),
-            ("https://api.sults.com.br/api/v1", "/chamado", "token"),
-            ("https://api.sults.com.br/api/v1", "/chamados", "token"),
-            ("https://api.sults.com.br/api/v1", "/lead", "token"),
-            ("https://api.sults.com.br/api/v1", "/leads", "token"),
-        ]
-        
-        for base_url, endpoint, auth_format in priority_combinations:
+        # Usar endpoints que sabemos que funcionam: projetos e empresas
+        try:
+            client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/api/v1", auth_format="token")
+            
+            # Buscar projetos (endpoint confirmado funcionando)
+            projetos = client.get_projetos()
+            
+            # Buscar empresas (endpoint confirmado funcionando)
+            empresas = []
+            try:
+                empresas_client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/v1", auth_format="token")
+                empresas = empresas_client.get_unidades() or []
+            except:
+                pass
+            
+            # Transformar projetos em leads para exibição
+            leads_abertos = []
+            leads_perdidos = []
+            leads_ganhos = []
+            
+            for projeto in projetos:
+                status = 'aberto'
+                if projeto.get('concluido'):
+                    status = 'ganho'
+                elif projeto.get('pausado'):
+                    status = 'perdido'
+                
+                lead_data = {
+                    'id': projeto.get('id'),
+                    'nome': projeto.get('nome', 'Sem nome'),
+                    'responsavel': projeto.get('responsavel', {}).get('nome', '') if isinstance(projeto.get('responsavel'), dict) else '',
+                    'unidade': projeto.get('unidade', {}).get('nomeFantasia', '') if isinstance(projeto.get('unidade'), dict) else '',
+                    'status': status,
+                    'ativo': projeto.get('ativo', False),
+                    'data_criacao': projeto.get('dtCriacao', ''),
+                    'data_inicio': projeto.get('dtInicio', ''),
+                    'data_fim': projeto.get('dtFim', ''),
+                    'origem': 'SULTS - Projeto'
+                }
+                
+                if status == 'aberto':
+                    leads_abertos.append(lead_data)
+                elif status == 'ganho':
+                    leads_ganhos.append(lead_data)
+                else:
+                    leads_perdidos.append(lead_data)
+            
+            total_leads = len(projetos)
+            
+            resultado = {
+                'token_status': token_status,
+                'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                'base_url': 'https://api.sults.com.br/api/v1',
+                'endpoint_used': '/projeto',
+                'auth_format': 'token',
+                'timestamp': datetime.now().isoformat(),
+                'leads': {
+                    'abertos': {
+                        'total': len(leads_abertos),
+                        'dados': leads_abertos[:50]
+                    },
+                    'perdidos': {
+                        'total': len(leads_perdidos),
+                        'dados': leads_perdidos[:50]
+                    },
+                    'ganhos': {
+                        'total': len(leads_ganhos),
+                        'dados': leads_ganhos[:50]
+                    }
+                },
+                'resumo': {
+                    'total_leads': total_leads,
+                    'total_projetos': len(projetos),
+                    'total_empresas': len(empresas)
+                }
+            }
+            
+            return jsonify({
+                'success': True,
+                'message': f'✅ Dados carregados da SULTS! ({total_leads} projetos encontrados)',
+                'data': resultado
+            })
+        except Exception as main_error:
+            print(f"Erro ao buscar dados principais: {main_error}")
+            import traceback
+            traceback.print_exc()
+            
+            # Se falhar, tentar combinações antigas
+            priority_combinations = [
+                ("https://api.sults.com.br/api/v1", "/negocio", "token"),
+                ("https://api.sults.com.br/api/v1", "/negocios", "token"),
+                ("https://api.sults.com.br/api/v1", "/chamado", "token"),
+                ("https://api.sults.com.br/api/v1", "/chamados", "token"),
+                ("https://api.sults.com.br/api/v1", "/lead", "token"),
+                ("https://api.sults.com.br/api/v1", "/leads", "token"),
+            ]
+            
+            for base_url, endpoint, auth_format in priority_combinations:
             try:
                 client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
                 leads_data = client.get_leads_by_status()
