@@ -1630,6 +1630,64 @@ def test_sults_connection():
             'suggestion': 'Tente diferentes URLs base usando: ?base_url=https://api.sults.com.br'
         }), 500
 
+@app.route('/api/sults/test-all', methods=['GET'])
+def test_all_sults_urls():
+    """Testa várias URLs e endpoints da SULTS automaticamente"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    token = os.getenv('SULTS_API_TOKEN', 'O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=')
+    
+    base_urls = [
+        "https://api.sults.com.br",
+        "https://app.sults.com.br/api",
+        "https://sults.com.br/api",
+        "https://api.sults.com.br/v1",
+        "https://app.sults.com.br",
+        "https://sults.com.br",
+        "https://api.sults.com.br/api",
+    ]
+    
+    endpoints = [
+        "/chamados",
+        "/api/chamados",
+        "/v1/chamados",
+        "/leads",
+        "/api/leads",
+        "/tickets",
+        "/unidades",
+    ]
+    
+    results = []
+    
+    for base_url in base_urls:
+        for endpoint in endpoints:
+            result = SultsAPIClient.test_connection(base_url, token, endpoint)
+            results.append({
+                'url': result['url'],
+                'status_code': result['status_code'],
+                'success': result['success'],
+                'message': result['message']
+            })
+            
+            # Se encontrar uma URL que funciona, retornar imediatamente
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'working_url': result['url'],
+                    'status_code': result['status_code'],
+                    'message': f'URL funcionando encontrada: {result["url"]}',
+                    'all_results': results
+                })
+    
+    # Se nenhuma funcionou, retornar todas as tentativas
+    return jsonify({
+        'success': False,
+        'message': 'Nenhuma URL funcionou. Verifique a documentação: https://developers.sults.com.br/',
+        'results': results,
+        'suggestion': 'Verifique a documentação oficial ou entre em contato com o suporte da SULTS para obter a URL base correta'
+    })
+
 @app.route('/api/sults/chamados', methods=['GET'])
 def get_sults_chamados():
     """Busca chamados da SULTS"""
