@@ -161,7 +161,7 @@ class SultsAPIClient:
                 headers=self.headers,
                 params=params,
                 json=data,
-                timeout=30
+                timeout=5  # Reduzir timeout para 5 segundos
             )
             response.raise_for_status()
             

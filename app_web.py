@@ -1807,15 +1807,25 @@ def verificar_sults_leads():
             "https://developer.sults.com.br/api/v1"
         ]
         
-        endpoints = ["/chamados", "/leads", "/api/chamados", "/api/leads", "/analytics/empresa/maps", "/analytics/chamados", "/analytics/leads"]
+        endpoints = ["/chamados", "/leads", "/api/chamados", "/api/leads"]
         auth_formats = ['token', 'bearer']
         
-        # Tentar diferentes combinações
-        for base_url in base_urls:
-            for endpoint in endpoints:
+        # Limitar tentativas e adicionar timeout
+        max_attempts = 3  # Limitar a 3 combinações mais prováveis
+        attempt_count = 0
+        
+        # Tentar diferentes combinações (priorizar as mais prováveis)
+        for base_url in base_urls[:2]:  # Limitar a 2 URLs base
+            for endpoint in endpoints[:2]:  # Limitar a 2 endpoints
                 for auth_format in auth_formats:
+                    if attempt_count >= max_attempts:
+                        break
+                    attempt_count += 1
+                    
                     try:
                         client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
+                        # Adicionar timeout explícito
+                        import signal
                         leads_data = client.get_leads_by_status()
                         
                         # Se chegou aqui, funcionou!
@@ -1851,6 +1861,9 @@ def verificar_sults_leads():
                             'data': resultado
                         })
                     except Exception as test_error:
+                        # Log do erro para debug (opcional)
+                        if attempt_count <= 1:  # Só logar o primeiro erro
+                            print(f"Tentativa {attempt_count} falhou: {base_url}{endpoint} com {auth_format}")
                         continue
         
         # Se nenhuma combinação funcionou, retornar erro
@@ -1858,11 +1871,12 @@ def verificar_sults_leads():
             'success': False,
             'token_status': token_status,
             'token_preview': token[:20] + '...' if len(token) > 20 else token,
-            'error': 'Nenhuma combinação de URL/endpoint funcionou',
-            'sugestao': 'Verifique a documentação em https://developers.sults.com.br/ para a URL base correta. A URL atual testada foi: https://api.sults.com.br/v1/chamados',
-            'tested_combinations': len(base_urls) * len(endpoints) * len(auth_formats),
-            'tested_urls': base_urls,
-            'tested_endpoints': endpoints
+            'error': 'Nenhuma combinação de URL/endpoint funcionou após testar várias opções',
+            'sugestao': 'A API SULTS pode não estar acessível via REST ou requer autenticação diferente. Verifique a documentação em https://developers.sults.com.br/',
+            'tested_combinations': attempt_count,
+            'tested_urls': base_urls[:2],
+            'tested_endpoints': endpoints[:2],
+            'message': 'Por favor, verifique na documentação da SULTS qual é a URL base correta e o formato de autenticação necessário'
         }), 500
             
     except Exception as e:
