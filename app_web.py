@@ -1503,7 +1503,7 @@ def favicon():
 def auto_upload_leads():
     try:
         file_id = os.getenv('LEADS_FILE_ID', os.getenv('DRIVE_FILE_ID', '1f-dvv2zLKbey__rug-T5gJn-NkNmf7EWcQv3Tb9IvM8'))
-        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', 'Leads Be Honest,Leads Franquia')
+        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', 'Leads Be Honest,Leads Be Honest 2,Leads Franquia')
         priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
         credentials = load_drive_credentials()
