@@ -1908,9 +1908,28 @@ def verificar_sults_leads():
                 unidade_nome = unidade.get('nomeFantasia', 'Sem unidade') if isinstance(unidade, dict) else 'Sem unidade'
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
+                # Extrair informações de contato (para negócios de franqueados)
+                contato_pessoa = projeto.get('contatoPessoa', [])
+                contato_empresa = projeto.get('contatoEmpresa', {})
+                
+                # Pegar primeiro contato se houver
+                email = ''
+                telefone = ''
+                if contato_pessoa and isinstance(contato_pessoa, list) and len(contato_pessoa) > 0:
+                    primeiro_contato = contato_pessoa[0]
+                    email = primeiro_contato.get('email', '') if isinstance(primeiro_contato, dict) else ''
+                    telefone = primeiro_contato.get('phone', '') if isinstance(primeiro_contato, dict) else ''
+                
+                # Se não tiver contato pessoa, tentar contato empresa
+                if not email and contato_empresa and isinstance(contato_empresa, dict):
+                    email = contato_empresa.get('email', '')
+                    telefone = contato_empresa.get('phone', '')
+                
                 lead_data = {
                     'id': projeto.get('id'),
-                    'nome': projeto.get('nome', 'Sem nome'),
+                    'nome': projeto.get('nome') or projeto.get('titulo', 'Sem nome'),
+                    'email': email,
+                    'telefone': telefone,
                     'responsavel': responsavel_nome,
                     'unidade': unidade_nome,
                     'categoria': categoria_nome,
@@ -1919,10 +1938,10 @@ def verificar_sults_leads():
                     'funil': funil_nome,
                     'status': status,
                     'ativo': projeto.get('ativo', False),
-                    'data_criacao': projeto.get('dtCriacao', ''),
+                    'data_criacao': projeto.get('dtCriacao', '') or projeto.get('dtCadastro', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
-                    'data_fim': projeto.get('dtFim', ''),
-                    'origem': 'SULTS - Projeto'
+                    'data_fim': projeto.get('dtFim', '') or projeto.get('dtConclusao', ''),
+                    'origem': 'SULTS - Franqueados'
                 }
                 
                 if status == 'aberto':

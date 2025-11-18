@@ -289,6 +289,39 @@ class SultsAPIClient:
             return response['data']
         return response if isinstance(response, list) else []
     
+    def get_negocios_franqueados(self, filters: Optional[Dict] = None) -> List[Dict]:
+        """Busca negócios de franqueados da SULTS via endpoint de expansão"""
+        # Tentar endpoint de expansão/negócios
+        base_urls = [
+            "https://behonestbrasil.sults.com.br",
+            "https://api.sults.com.br/api/v1",
+            "https://api.sults.com.br/v1"
+        ]
+        
+        endpoints = ["/expansao/negocio/0", "/expansao/negocio", "/negocio/franqueados", "/franqueados"]
+        params = filters or {}
+        
+        for base_url in base_urls:
+            for endpoint in endpoints:
+                try:
+                    url = f"{base_url}{endpoint}"
+                    headers = self.headers.copy()
+                    response = requests.get(url, headers=headers, params=params, timeout=10)
+                    
+                    if response.status_code == 200:
+                        try:
+                            data = response.json()
+                            if isinstance(data, dict) and 'data' in data:
+                                return data['data']
+                            elif isinstance(data, list):
+                                return data
+                        except:
+                            continue
+                except:
+                    continue
+        
+        return []
+    
     def get_leads_status(self, date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
         """Busca status de leads em um período"""
         filters = {}
