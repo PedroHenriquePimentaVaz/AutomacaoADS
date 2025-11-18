@@ -1900,45 +1900,6 @@ def verificar_sults_leads():
                        for palavra in ['loja', 'lojas', 'extrabom']):
                     continue
                 
-                # Verificar se tem etiqueta MQL
-                etiquetas = projeto.get('etiqueta', [])
-                tem_mql = False
-                if etiquetas and isinstance(etiquetas, list):
-                    for etiqueta in etiquetas:
-                        if isinstance(etiqueta, dict):
-                            etiqueta_nome = etiqueta.get('nome', '').upper()
-                            if 'MQL' in etiqueta_nome:
-                                tem_mql = True
-                                break
-                
-                # Buscar timeline para verificar avaliações ou checkpoints relacionados a MQL
-                negocio_id = projeto.get('id')
-                tem_mql_timeline = False
-                if negocio_id:
-                    try:
-                        timeline = client.get_negocio_timeline(negocio_id)
-                        if timeline:
-                            for item in timeline:
-                                # Verificar avaliações (tipo 11) que possam indicar MQL
-                                if item.get('tipo') == 11:
-                                    avaliacao = item.get('avaliacao', {})
-                                    if isinstance(avaliacao, dict):
-                                        avaliacao_nome = avaliacao.get('nome', '').upper()
-                                        avaliacao_texto = avaliacao.get('avaliacao', '').upper()
-                                        if 'MQL' in avaliacao_nome or 'MQL' in avaliacao_texto:
-                                            tem_mql_timeline = True
-                                            break
-                                # Verificar checkpoints (tipo 9) relacionados a MQL
-                                elif item.get('tipo') == 9:
-                                    checkpoint = item.get('checkpoint', {})
-                                    if isinstance(checkpoint, dict):
-                                        checkpoint_nome = checkpoint.get('nome', '').upper()
-                                        if 'MQL' in checkpoint_nome:
-                                            tem_mql_timeline = True
-                                            break
-                    except:
-                        pass
-                
                 status = 'aberto'
                 if projeto.get('concluido'):
                     status = 'ganho'
@@ -1977,9 +1938,23 @@ def verificar_sults_leads():
                     unidade_nome = contato_empresa.get('nomeFantasia', 'Sem unidade')
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
+                # Verificar se tem etiqueta MQL
+                etiquetas = projeto.get('etiqueta', [])
+                tem_mql = False
+                etiquetas_nomes = []
+                
+                if etiquetas and isinstance(etiquetas, list):
+                    for etiqueta in etiquetas:
+                        if isinstance(etiqueta, dict):
+                            etiqueta_nome = etiqueta.get('nome', '')
+                            etiquetas_nomes.append(etiqueta_nome)
+                            # Verificar se a etiqueta contém MQL (case insensitive)
+                            if 'MQL' in etiqueta_nome.upper():
+                                tem_mql = True
+                
                 # Extrair informações de contato (para negócios de franqueados)
-                # contato_empresa já foi definido acima
                 contato_pessoa = projeto.get('contatoPessoa', [])
+                contato_empresa = projeto.get('contatoEmpresa', {})
                 
                 # Pegar primeiro contato se houver
                 email = ''
@@ -2014,15 +1989,8 @@ def verificar_sults_leads():
                         status = 'ganho'
                     elif projeto.get('pausado'):
                         status = 'perdido'
-                else:
-                    status = 'aberto'
-                
-                # Extrair etiquetas
-                etiquetas_nomes = []
-                if etiquetas and isinstance(etiquetas, list):
-                    for etiqueta in etiquetas:
-                        if isinstance(etiqueta, dict):
-                            etiquetas_nomes.append(etiqueta.get('nome', ''))
+                    else:
+                        status = 'aberto'
                 
                 lead_data = {
                     'id': projeto.get('id'),
@@ -2046,8 +2014,6 @@ def verificar_sults_leads():
                     'valor': projeto.get('valor', 0.0),
                     'origem': projeto.get('origem', {}).get('nome', 'SULTS') if isinstance(projeto.get('origem'), dict) else 'SULTS',
                     'temperatura': projeto.get('temperatura', {}).get('nome', '') if isinstance(projeto.get('temperatura'), dict) else '',
-                    'etiquetas': etiquetas_nomes,
-                    'tem_mql': tem_mql or tem_mql_timeline,
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 

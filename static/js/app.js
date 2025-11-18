@@ -355,6 +355,17 @@ function renderLeadsKPIs() {
         );
     }
     
+    if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'MQLs (Etiqueta MQL)',
+                kpis.tag_mqls.toLocaleString(),
+                'fas fa-user-check',
+                '#10B981'
+            )
+        );
+    }
+    
     if (kpis.mql_to_lead_rate !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -369,32 +380,10 @@ function renderLeadsKPIs() {
     if (kpis.tag_leads !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'Leads (tag LEAD)',
+                'Total de Leads',
                 kpis.tag_leads.toLocaleString(),
-                'fas fa-user-plus',
+                'fas fa-users',
                 '#0EA5E9'
-            )
-        );
-    }
-    
-    if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'MQLs (tag MQL)',
-                kpis.tag_mqls.toLocaleString(),
-                'fas fa-user-check',
-                '#10B981'
-            )
-        );
-    }
-    
-    if (kpis.mql_to_lead_rate !== undefined && parseFloat(kpis.mql_to_lead_rate) > 0) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Taxa MQL/Lead',
-                `${parseFloat(kpis.mql_to_lead_rate).toFixed(1)}%`,
-                'fas fa-percentage',
-                '#8B5CF6'
             )
         );
     }
@@ -2033,7 +2022,7 @@ function displaySultsData(data) {
             abertos: data.leads?.abertos?.total || 0,
             perdidos: data.leads?.perdidos?.total || 0,
             ganhos: data.leads?.ganhos?.total || 0,
-            mql: data.resumo?.leads_mql || 0
+            mql: data.resumo?.leads_mql || data.leads?.mql?.total || 0
         },
         estatisticas: data.estatisticas || {
             leads_por_fase: {},
@@ -2056,30 +2045,23 @@ function displaySultsData(data) {
         ...(sultsLeads.leads.ganhos || [])
     ];
     
-    console.log('Total de leads processados:', allLeads.length);
+    console.log('Total de leads processados:', uniqueLeads.length);
     console.log('Leads abertos:', sultsLeads.resumo.abertos);
     console.log('Leads perdidos:', sultsLeads.resumo.perdidos);
     console.log('Leads ganhos:', sultsLeads.resumo.ganhos);
     console.log('Leads MQL:', sultsLeads.resumo.mql);
     
-    // Remover duplicatas baseado no ID
-    const uniqueLeads = [];
-    const seenIds = new Set();
-    for (const lead of allLeads) {
-        if (lead.id && !seenIds.has(lead.id)) {
-            seenIds.add(lead.id);
-            uniqueLeads.push(lead);
-        } else if (!lead.id) {
-            uniqueLeads.push(lead);
-        }
-    }
+    // Calcular taxa de MQL para Lead
+    const totalLeads = sultsLeads.resumo.total_leads || uniqueLeads.length;
+    const totalMQL = sultsLeads.resumo.mql || 0;
+    const mqlToLeadRate = totalLeads > 0 ? (totalMQL / totalLeads) * 100 : 0;
     
     // Criar dados no formato esperado pelo dashboard
     currentLeadsData = {
-        total_leads: sultsLeads.resumo.total_leads,
-        tag_leads: sultsLeads.resumo.total_leads,
-        tag_mqls: 0,
-        mql_to_lead_rate: 0,
+        total_leads: totalLeads,
+        tag_leads: totalLeads,
+        tag_mqls: totalMQL,
+        mql_to_lead_rate: mqlToLeadRate,
         leads: uniqueLeads.map(lead => ({
             nome: lead.nome || lead.name || 'Sem nome',
             email: lead.email || '',
@@ -2092,15 +2074,12 @@ function displaySultsData(data) {
             fase: lead.fase || '',
             categoria: lead.categoria || '',
             etapa: lead.etapa || '',
-            funil: lead.funil || '',
-            etiquetas: lead.etiquetas || [],
-            tem_mql: lead.tem_mql || false
+            funil: lead.funil || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
             'Perdidos': sultsLeads.resumo.perdidos,
-            'Ganhos': sultsLeads.resumo.ganhos,
-            'MQL': sultsLeads.resumo.mql
+            'Ganhos': sultsLeads.resumo.ganhos
         },
         kpis: {
             total_leads: sultsLeads.resumo.total_leads,
@@ -2108,10 +2087,8 @@ function displaySultsData(data) {
             leads_won: sultsLeads.resumo.ganhos,
             leads_lost: sultsLeads.resumo.perdidos,
             tag_leads: sultsLeads.resumo.total_leads,
-            tag_mqls: sultsLeads.resumo.mql,
-            mql_to_lead_rate: sultsLeads.resumo.total_leads > 0 
-                ? ((sultsLeads.resumo.mql / sultsLeads.resumo.total_leads) * 100).toFixed(1) 
-                : 0
+            tag_mqls: 0,
+            mql_to_lead_rate: 0
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
