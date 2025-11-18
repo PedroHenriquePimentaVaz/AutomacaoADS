@@ -1637,6 +1637,30 @@ def get_sults_chamados():
             'error': f'Erro ao buscar chamados: {str(e)}'
         }), 500
 
+@app.route('/api/sults/leads-status', methods=['GET'])
+def get_sults_leads_status():
+    """Busca leads da SULTS organizados por status (abertos, perdidos, ganhos)"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        client = SultsAPIClient()
+        status_filter = request.args.get('status')  # 'aberto', 'perdido', 'ganho' ou None para todos
+        
+        leads_data = client.get_leads_by_status(status_filter=status_filter)
+        
+        return jsonify({
+            'success': True,
+            'data': leads_data
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar leads da SULTS: {str(e)}'
+        }), 500
+
 @app.route('/api/sults/sync-lead', methods=['POST'])
 def sync_lead_to_sults():
     """Sincroniza um lead com a SULTS"""

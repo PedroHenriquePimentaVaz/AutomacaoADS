@@ -103,6 +103,69 @@ class SultsAPIClient:
             'chamados': chamados
         }
     
+    def get_leads_by_status(self, status_filter: Optional[str] = None) -> Dict:
+        """
+        Busca leads organizados por status (abertos, perdidos, etc.)
+        
+        Args:
+            status_filter: Filtro opcional de status ('aberto', 'perdido', 'ganho', etc.)
+        """
+        chamados = self.get_chamados()
+        
+        # Categorizar leads por status
+        leads_abertos = []
+        leads_perdidos = []
+        leads_ganhos = []
+        leads_outros = []
+        
+        status_keywords = {
+            'aberto': ['aberto', 'em andamento', 'pendente', 'novo', 'em análise'],
+            'perdido': ['perdido', 'cancelado', 'desistiu', 'no show', 'falhou'],
+            'ganho': ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
+        }
+        
+        for chamado in chamados:
+            status = str(chamado.get('status', '')).lower()
+            
+            if any(keyword in status for keyword in status_keywords['ganho']):
+                leads_ganhos.append(chamado)
+            elif any(keyword in status for keyword in status_keywords['perdido']):
+                leads_perdidos.append(chamado)
+            elif any(keyword in status for keyword in status_keywords['aberto']):
+                leads_abertos.append(chamado)
+            else:
+                leads_outros.append(chamado)
+        
+        # Aplicar filtro se especificado
+        if status_filter:
+            status_lower = status_filter.lower()
+            if status_lower == 'aberto':
+                return {'leads': leads_abertos, 'total': len(leads_abertos), 'status': 'Aberto'}
+            elif status_lower == 'perdido':
+                return {'leads': leads_perdidos, 'total': len(leads_perdidos), 'status': 'Perdido'}
+            elif status_lower == 'ganho':
+                return {'leads': leads_ganhos, 'total': len(leads_ganhos), 'status': 'Ganho'}
+        
+        return {
+            'abertos': {
+                'leads': leads_abertos,
+                'total': len(leads_abertos)
+            },
+            'perdidos': {
+                'leads': leads_perdidos,
+                'total': len(leads_perdidos)
+            },
+            'ganhos': {
+                'leads': leads_ganhos,
+                'total': len(leads_ganhos)
+            },
+            'outros': {
+                'leads': leads_outros,
+                'total': len(leads_outros)
+            },
+            'total_geral': len(chamados)
+        }
+    
     def sync_lead_with_sults(self, lead_data: Dict) -> Dict:
         """Sincroniza um lead com a SULTS (cria ou atualiza chamado)"""
         endpoint = "/api/chamados"
