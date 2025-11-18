@@ -1915,17 +1915,26 @@ async function handleSultsDataLoad() {
     
     try {
         const response = await fetch('/api/sults/verificar-leads');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const result = await response.json();
+        
+        console.log('Resposta da API SULTS:', result);
         
         if (result.success && result.data) {
             displaySultsData(result.data);
         } else {
-            alert('Erro ao carregar dados da SULTS: ' + (result.error || 'Erro desconhecido'));
+            const errorMsg = result.error || result.message || 'Erro desconhecido';
+            console.error('Erro na resposta:', errorMsg);
+            alert('Erro ao carregar dados da SULTS: ' + errorMsg);
             showUpload();
         }
     } catch (error) {
         console.error('Erro ao buscar dados SULTS:', error);
-        alert('Erro ao conectar com a API SULTS. Verifique se o servidor está rodando.');
+        alert('Erro ao conectar com a API SULTS: ' + error.message + '. Verifique se o servidor está rodando na porta 5003.');
         showUpload();
     }
 }
