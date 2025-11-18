@@ -105,11 +105,36 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 - Busca de chamados e status de leads
 - Consulta de unidades e projetos
 - Endpoints disponíveis:
+  - `GET /api/sults/verificar-leads` - Verifica leads abertos/perdidos (recomendado)
   - `GET /api/sults/test` - Testa conexão com a API
+  - `GET /api/sults/diagnose` - Diagnóstico detalhado de autenticação
+  - `GET /api/sults/leads-status` - Busca leads por status (aberto, perdido, ganho)
   - `GET /api/sults/chamados` - Busca chamados (parâmetros: `date_from`, `date_to`)
   - `POST /api/sults/sync-lead` - Sincroniza um lead com a SULTS
 - Token configurável via variável de ambiente `SULTS_API_TOKEN`
 - Documentação da API: https://developers.sults.com.br/
+
+#### Como Verificar se a Integração SULTS Está Funcionando
+
+1. **Teste rápido:**
+   ```bash
+   curl http://localhost:5003/api/sults/verificar-leads
+   ```
+   Ou acesse no navegador: `http://localhost:5003/api/sults/verificar-leads`
+
+2. **Se não funcionar, execute o diagnóstico:**
+   ```bash
+   curl http://localhost:5003/api/sults/diagnose
+   ```
+
+3. **Teste manual com script:**
+   ```bash
+   python testar_sults_manual.py
+   ```
+
+4. **Siga o guia completo:**
+   - Leia `GUIA_BUSCAR_DADOS_SULTS.md` para descobrir a URL correta da API
+   - Use o DevTools do navegador (F12) para inspecionar requisições
 
 ## 🎨 Design System
 
