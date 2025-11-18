@@ -556,65 +556,6 @@ function renderLeadsByCategoryChart(data) {
     });
 }
 
-function renderLojasByUFChart(data) {
-    const canvasId = 'lojasByUFChart';
-    let canvas = document.getElementById(canvasId);
-    
-    if (!canvas) {
-        const chartContainer = document.querySelector('.lead-charts-container') || document.getElementById('leadChartsSection');
-        if (chartContainer) {
-            canvas = document.createElement('canvas');
-            canvas.id = canvasId;
-            canvas.style.maxHeight = '400px';
-            const chartDiv = document.createElement('div');
-            chartDiv.className = 'chart-container';
-            chartDiv.innerHTML = '<h3>Lojas por Estado (UF)</h3>';
-            chartDiv.appendChild(canvas);
-            chartContainer.appendChild(chartDiv);
-        } else {
-            return;
-        }
-    }
-    
-    const ctx = canvas.getContext('2d');
-    
-    if (window.lojasByUFChart) {
-        window.lojasByUFChart.destroy();
-    }
-    
-    // Ordenar por quantidade
-    const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]);
-    const labels = sorted.map(item => item[0]);
-    const values = sorted.map(item => item[1]);
-    
-    window.lojasByUFChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Lojas',
-                data: values,
-                backgroundColor: 'rgba(237, 177, 37, 0.8)',
-                borderColor: '#edb125',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-}
 
 function renderLeadDistributions() {
     const distributions = filteredLeadsData?.distributions || {};
