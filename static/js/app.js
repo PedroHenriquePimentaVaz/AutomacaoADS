@@ -416,18 +416,24 @@ function renderLeadCharts() {
     const distributions = filteredLeadsData.distributions || {};
     const estatisticas = filteredLeadsData.estatisticas || {};
     
+    // Garantir que estatisticas existe
+    if (!estatisticas) {
+        console.warn('Estatísticas não disponíveis');
+        return;
+    }
+    
     // Renderizar gráfico de leads por fase
-    if (estatisticas.leads_por_fase && Object.keys(estatisticas.leads_por_fase).length > 0) {
+    if (estatisticas.leads_por_fase && typeof estatisticas.leads_por_fase === 'object' && Object.keys(estatisticas.leads_por_fase).length > 0) {
         renderLeadsByPhaseChart(estatisticas.leads_por_fase);
     }
     
     // Renderizar gráfico de leads por categoria
-    if (estatisticas.leads_por_categoria && Object.keys(estatisticas.leads_por_categoria).length > 0) {
+    if (estatisticas.leads_por_categoria && typeof estatisticas.leads_por_categoria === 'object' && Object.keys(estatisticas.leads_por_categoria).length > 0) {
         renderLeadsByCategoryChart(estatisticas.leads_por_categoria);
     }
     
     // Renderizar gráfico de lojas por UF
-    if (estatisticas.lojas_por_uf && Object.keys(estatisticas.lojas_por_uf).length > 0) {
+    if (estatisticas.lojas_por_uf && typeof estatisticas.lojas_por_uf === 'object' && Object.keys(estatisticas.lojas_por_uf).length > 0) {
         renderLojasByUFChart(estatisticas.lojas_por_uf);
     }
     
@@ -639,7 +645,7 @@ function renderLeadDistributions() {
     const estatisticas = filteredLeadsData?.estatisticas || {};
     
     // Adicionar distribuições de fase e categoria se disponíveis
-    if (estatisticas.leads_por_fase) {
+    if (estatisticas && estatisticas.leads_por_fase && typeof estatisticas.leads_por_fase === 'object') {
         const faseList = document.getElementById('leadFaseList');
         if (faseList) {
             faseList.innerHTML = '';
