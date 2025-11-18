@@ -1825,15 +1825,21 @@ def verificar_sults_leads():
             empresas = []
             try:
                 empresas_client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/v1", auth_format="token")
-                empresas = empresas_client.get_unidades() or []
-            except:
-                pass
+                empresas_response = empresas_client._make_request('GET', '/empresas')
+                if isinstance(empresas_response, list):
+                    empresas = empresas_response
+                elif isinstance(empresas_response, dict) and 'data' in empresas_response:
+                    empresas = empresas_response['data']
+            except Exception as e:
+                print(f"Erro ao buscar empresas: {e}")
+                empresas = []
             
             # Transformar projetos em leads para exibição
             leads_abertos = []
             leads_perdidos = []
             leads_ganhos = []
             
+            # Processar projetos com mais detalhes
             for projeto in projetos:
                 status = 'aberto'
                 if projeto.get('concluido'):
@@ -1841,17 +1847,48 @@ def verificar_sults_leads():
                 elif projeto.get('pausado'):
                     status = 'perdido'
                 
+                # Extrair informações da equipe
+                equipe = projeto.get('equipe', [])
+                equipe_nomes = [p.get('pessoa', {}).get('nome', '') if isinstance(p.get('pessoa'), dict) else '' for p in equipe if isinstance(p, dict)]
+                
+                # Extrair informações da unidade
+                unidade_info = projeto.get('unidade', {})
+                unidade_nome = unidade_info.get('nomeFantasia', '') if isinstance(unidade_info, dict) else ''
+                unidade_cnpj = unidade_info.get('cnpj', '') if isinstance(unidade_info, dict) else ''
+                
+                # Extrair informações do responsável
+                responsavel_info = projeto.get('responsavel', {})
+                responsavel_nome = responsavel_info.get('nome', '') if isinstance(responsavel_info, dict) else ''
+                
+                # Extrair categoria e modelo
+                categoria = projeto.get('categoria', {})
+                categoria_nome = categoria.get('nome', '') if isinstance(categoria, dict) else ''
+                
+                modelo = projeto.get('modelo', {})
+                modelo_nome = modelo.get('nome', '') if isinstance(modelo, dict) else ''
+                
                 lead_data = {
                     'id': projeto.get('id'),
                     'nome': projeto.get('nome', 'Sem nome'),
-                    'responsavel': projeto.get('responsavel', {}).get('nome', '') if isinstance(projeto.get('responsavel'), dict) else '',
-                    'unidade': projeto.get('unidade', {}).get('nomeFantasia', '') if isinstance(projeto.get('unidade'), dict) else '',
+                    'responsavel': responsavel_nome,
+                    'unidade': unidade_nome,
+                    'unidade_cnpj': unidade_cnpj,
+                    'categoria': categoria_nome,
+                    'modelo': modelo_nome,
+                    'equipe': ', '.join(equipe_nomes[:3]),  # Primeiros 3 membros
+                    'equipe_total': len(equipe_nomes),
                     'status': status,
                     'ativo': projeto.get('ativo', False),
+                    'pausado': projeto.get('pausado', False),
+                    'concluido': projeto.get('concluido', False),
                     'data_criacao': projeto.get('dtCriacao', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
                     'data_fim': projeto.get('dtFim', ''),
-                    'origem': 'SULTS - Projeto'
+                    'data_inicio_planejamento': projeto.get('dtInicioPlanejamento', ''),
+                    'data_fim_planejamento': projeto.get('dtFimPlanejamento', ''),
+                    'origem': 'SULTS - Projeto',
+                    'tipo_calculo': projeto.get('tipoCalculoTarefa', ''),
+                    'dia_semana': projeto.get('diaSemanaTarefa', '')
                 }
                 
                 if status == 'aberto':
@@ -1861,7 +1898,47 @@ def verificar_sults_leads():
                 else:
                     leads_perdidos.append(lead_data)
             
-            total_leads = len(projetos)
+            # Processar empresas como leads adicionais
+            empresas_leads = []
+            for empresa in empresas[:100]:  # Limitar a 100 empresas
+                endereco = empresa.get('endereco', {})
+                endereco_completo = ''
+                if isinstance(endereco, dict):
+                    rua = endereco.get('rua', '')
+                    numero = endereco.get('numero', '')
+                    bairro = endereco.get('bairro', '')
+                    cidade = endereco.get('cidade', '')
+                    uf = endereco.get('uf', '')
+                    endereco_completo = f"{rua}, {numero} - {bairro}, {cidade}/{uf}".strip(', ')
+                
+                emails = empresa.get('email', [])
+                telefones = empresa.get('telefone', [])
+                
+                empresa_lead = {
+                    'id': empresa.get('id'),
+                    'nome': empresa.get('nomeFantasia', empresa.get('razaoSocial', 'Sem nome')),
+                    'razao_social': empresa.get('razaoSocial', ''),
+                    'cnpj': empresa.get('cnpj', ''),
+                    'email': ', '.join(emails[:2]) if isinstance(emails, list) else '',
+                    'telefone': ', '.join(telefones[:2]) if isinstance(telefones, list) else '',
+                    'endereco': endereco_completo,
+                    'cidade': endereco.get('cidade', '') if isinstance(endereco, dict) else '',
+                    'uf': endereco.get('uf', '') if isinstance(endereco, dict) else '',
+                    'status': 'ativo' if empresa.get('ativo', False) else 'inativo',
+                    'situacao_id': empresa.get('situacaoId', ''),
+                    'data_cadastro': empresa.get('dtCadastro', ''),
+                    'data_cadastro_sistema': empresa.get('dtCadastroSistema', ''),
+                    'data_inicio_implantacao': empresa.get('dtInicioImplantacao', ''),
+                    'data_fim_implantacao': empresa.get('dtFimImplantacao', ''),
+                    'data_inauguracao': empresa.get('dtInauguracao', ''),
+                    'origem': 'SULTS - Empresa'
+                }
+                
+                if empresa.get('ativo', False):
+                    leads_abertos.append(empresa_lead)
+                empresas_leads.append(empresa_lead)
+            
+            total_leads = len(projetos) + len(empresas_leads)
             
             resultado = {
                 'token_status': token_status,
@@ -1873,27 +1950,35 @@ def verificar_sults_leads():
                 'leads': {
                     'abertos': {
                         'total': len(leads_abertos),
-                        'dados': leads_abertos[:50]
+                        'dados': leads_abertos[:100]  # Aumentar limite
                     },
                     'perdidos': {
                         'total': len(leads_perdidos),
-                        'dados': leads_perdidos[:50]
+                        'dados': leads_perdidos[:100]
                     },
                     'ganhos': {
                         'total': len(leads_ganhos),
-                        'dados': leads_ganhos[:50]
+                        'dados': leads_ganhos[:100]
                     }
                 },
                 'resumo': {
                     'total_leads': total_leads,
                     'total_projetos': len(projetos),
-                    'total_empresas': len(empresas)
+                    'total_empresas': len(empresas),
+                    'projetos_ativos': len([p for p in projetos if p.get('ativo', False) and not p.get('concluido', False)]),
+                    'projetos_concluidos': len([p for p in projetos if p.get('concluido', False)]),
+                    'projetos_pausados': len([p for p in projetos if p.get('pausado', False)]),
+                    'empresas_ativas': len([e for e in empresas if e.get('ativo', False)])
+                },
+                'detalhes': {
+                    'projetos': projetos[:20],  # Primeiros 20 projetos completos
+                    'empresas': empresas[:20]    # Primeiros 20 empresas completas
                 }
             }
             
             return jsonify({
                 'success': True,
-                'message': f'✅ Dados carregados da SULTS! ({total_leads} projetos encontrados)',
+                'message': f'✅ Dados carregados da SULTS! ({len(projetos)} projetos, {len(empresas)} empresas)',
                 'data': resultado
             })
         except Exception as main_error:
@@ -1912,51 +1997,51 @@ def verificar_sults_leads():
             ]
             
             for base_url, endpoint, auth_format in priority_combinations:
-            try:
-                client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
-                leads_data = client.get_leads_by_status()
-                
-                # Se chegou aqui, funcionou!
-                resultado = {
-                    'token_status': token_status,
-                    'token_preview': token[:20] + '...' if len(token) > 20 else token,
-                    'base_url': base_url,
-                    'endpoint_used': endpoint,
-                    'auth_format': auth_format,
-                    'timestamp': datetime.now().isoformat(),
-                    'leads': {
-                        'abertos': {
-                            'total': len(leads_data.get('abertos', {}).get('leads', [])) if isinstance(leads_data.get('abertos'), dict) else (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0),
-                            'dados': (leads_data.get('abertos', {}).get('leads', [])[:10] if isinstance(leads_data.get('abertos'), dict) else leads_data.get('abertos', [])[:10]) if isinstance(leads_data.get('abertos'), (dict, list)) else []
+                try:
+                    client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
+                    leads_data = client.get_leads_by_status()
+                    
+                    # Se chegou aqui, funcionou!
+                    resultado = {
+                        'token_status': token_status,
+                        'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                        'base_url': base_url,
+                        'endpoint_used': endpoint,
+                        'auth_format': auth_format,
+                        'timestamp': datetime.now().isoformat(),
+                        'leads': {
+                            'abertos': {
+                                'total': len(leads_data.get('abertos', {}).get('leads', [])) if isinstance(leads_data.get('abertos'), dict) else (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0),
+                                'dados': (leads_data.get('abertos', {}).get('leads', [])[:10] if isinstance(leads_data.get('abertos'), dict) else leads_data.get('abertos', [])[:10]) if isinstance(leads_data.get('abertos'), (dict, list)) else []
+                            },
+                            'perdidos': {
+                                'total': len(leads_data.get('perdidos', {}).get('leads', [])) if isinstance(leads_data.get('perdidos'), dict) else (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0),
+                                'dados': (leads_data.get('perdidos', {}).get('leads', [])[:10] if isinstance(leads_data.get('perdidos'), dict) else leads_data.get('perdidos', [])[:10]) if isinstance(leads_data.get('perdidos'), (dict, list)) else []
+                            },
+                            'ganhos': {
+                                'total': len(leads_data.get('ganhos', {}).get('leads', [])) if isinstance(leads_data.get('ganhos'), dict) else (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0),
+                                'dados': (leads_data.get('ganhos', {}).get('leads', [])[:10] if isinstance(leads_data.get('ganhos'), dict) else leads_data.get('ganhos', [])[:10]) if isinstance(leads_data.get('ganhos'), (dict, list)) else []
+                            }
                         },
-                        'perdidos': {
-                            'total': len(leads_data.get('perdidos', {}).get('leads', [])) if isinstance(leads_data.get('perdidos'), dict) else (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0),
-                            'dados': (leads_data.get('perdidos', {}).get('leads', [])[:10] if isinstance(leads_data.get('perdidos'), dict) else leads_data.get('perdidos', [])[:10]) if isinstance(leads_data.get('perdidos'), (dict, list)) else []
-                        },
-                        'ganhos': {
-                            'total': len(leads_data.get('ganhos', {}).get('leads', [])) if isinstance(leads_data.get('ganhos'), dict) else (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0),
-                            'dados': (leads_data.get('ganhos', {}).get('leads', [])[:10] if isinstance(leads_data.get('ganhos'), dict) else leads_data.get('ganhos', [])[:10]) if isinstance(leads_data.get('ganhos'), (dict, list)) else []
+                        'resumo': {
+                            'total_leads': leads_data.get('total_geral', 0)
                         }
-                    },
-                    'resumo': {
-                        'total_leads': leads_data.get('total_geral', 0)
                     }
-                }
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'✅ Conexão com SULTS funcionando! (URL: {base_url}{endpoint})',
-                    'data': resultado
-                })
-            except Exception as test_error:
-                error_msg = str(test_error)[:200]  # Limitar tamanho do erro
-                tested_combinations.append({
-                    'url': f"{base_url}{endpoint}",
-                    'auth_format': auth_format,
-                    'error': error_msg
-                })
-                print(f"❌ Falhou: {base_url}{endpoint} ({auth_format}) - {error_msg}")
-                continue
+                    
+                    return jsonify({
+                        'success': True,
+                        'message': f'✅ Conexão com SULTS funcionando! (URL: {base_url}{endpoint})',
+                        'data': resultado
+                    })
+                except Exception as test_error:
+                    error_msg = str(test_error)[:200]  # Limitar tamanho do erro
+                    tested_combinations.append({
+                        'url': f"{base_url}{endpoint}",
+                        'auth_format': auth_format,
+                        'error': error_msg
+                    })
+                    print(f"❌ Falhou: {base_url}{endpoint} ({auth_format}) - {error_msg}")
+                    continue
         
         # Se nenhuma combinação funcionou, retornar erro detalhado
         return jsonify({

@@ -1736,7 +1736,18 @@ function displaySultsData(data) {
             origem: lead.origem || lead.source || 'SULTS',
             data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
             responsavel: lead.responsavel || '',
-            unidade: lead.unidade || ''
+            unidade: lead.unidade || lead.unidade_nome || '',
+            cnpj: lead.cnpj || lead.unidade_cnpj || '',
+            endereco: lead.endereco || '',
+            cidade: lead.cidade || '',
+            uf: lead.uf || '',
+            categoria: lead.categoria || '',
+            modelo: lead.modelo || '',
+            equipe: lead.equipe || '',
+            razao_social: lead.razao_social || '',
+            data_inicio: lead.data_inicio || '',
+            data_fim: lead.data_fim || '',
+            data_inauguracao: lead.data_inauguracao || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
