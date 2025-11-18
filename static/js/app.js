@@ -2014,13 +2014,15 @@ function displaySultsData(data) {
         leads: {
             abertos: data.leads?.abertos?.dados || [],
             perdidos: data.leads?.perdidos?.dados || [],
-            ganhos: data.leads?.ganhos?.dados || []
+            ganhos: data.leads?.ganhos?.dados || [],
+            mql: data.leads?.mql?.dados || []
         },
         resumo: {
             total_leads: data.resumo?.total_leads || 0,
             abertos: data.leads?.abertos?.total || 0,
             perdidos: data.leads?.perdidos?.total || 0,
-            ganhos: data.leads?.ganhos?.total || 0
+            ganhos: data.leads?.ganhos?.total || 0,
+            mql: data.resumo?.leads_mql || 0
         },
         estatisticas: data.estatisticas || {
             leads_por_fase: {},
@@ -2054,7 +2056,7 @@ function displaySultsData(data) {
         tag_leads: sultsLeads.resumo.total_leads,
         tag_mqls: 0,
         mql_to_lead_rate: 0,
-        leads: allLeads.map(lead => ({
+        leads: uniqueLeads.map(lead => ({
             nome: lead.nome || lead.name || 'Sem nome',
             email: lead.email || '',
             telefone: lead.telefone || lead.phone || '',
@@ -2079,8 +2081,10 @@ function displaySultsData(data) {
             leads_won: sultsLeads.resumo.ganhos,
             leads_lost: sultsLeads.resumo.perdidos,
             tag_leads: sultsLeads.resumo.total_leads,
-            tag_mqls: 0,
-            mql_to_lead_rate: 0
+            tag_mqls: sultsLeads.resumo.mql,
+            mql_to_lead_rate: sultsLeads.resumo.total_leads > 0 
+                ? ((sultsLeads.resumo.mql / sultsLeads.resumo.total_leads) * 100).toFixed(1) 
+                : 0
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},

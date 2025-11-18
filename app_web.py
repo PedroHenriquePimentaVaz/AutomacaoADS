@@ -1880,10 +1880,12 @@ def verificar_sults_leads():
             leads_abertos = []
             leads_perdidos = []
             leads_ganhos = []
+            leads_mql = []  # Leads com etiqueta MQL
             leads_por_fase = {}
             leads_por_categoria = {}
             leads_por_responsavel = {}
             leads_por_unidade = {}
+            total_mql = 0
             
             for projeto in projetos:
                 # Verificação final: pular se for loja
@@ -1897,6 +1899,45 @@ def verificar_sults_leads():
                 if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
                        for palavra in ['loja', 'lojas', 'extrabom']):
                     continue
+                
+                # Verificar se tem etiqueta MQL
+                etiquetas = projeto.get('etiqueta', [])
+                tem_mql = False
+                if etiquetas and isinstance(etiquetas, list):
+                    for etiqueta in etiquetas:
+                        if isinstance(etiqueta, dict):
+                            etiqueta_nome = etiqueta.get('nome', '').upper()
+                            if 'MQL' in etiqueta_nome:
+                                tem_mql = True
+                                break
+                
+                # Buscar timeline para verificar avaliações ou checkpoints relacionados a MQL
+                negocio_id = projeto.get('id')
+                tem_mql_timeline = False
+                if negocio_id:
+                    try:
+                        timeline = client.get_negocio_timeline(negocio_id)
+                        if timeline:
+                            for item in timeline:
+                                # Verificar avaliações (tipo 11) que possam indicar MQL
+                                if item.get('tipo') == 11:
+                                    avaliacao = item.get('avaliacao', {})
+                                    if isinstance(avaliacao, dict):
+                                        avaliacao_nome = avaliacao.get('nome', '').upper()
+                                        avaliacao_texto = avaliacao.get('avaliacao', '').upper()
+                                        if 'MQL' in avaliacao_nome or 'MQL' in avaliacao_texto:
+                                            tem_mql_timeline = True
+                                            break
+                                # Verificar checkpoints (tipo 9) relacionados a MQL
+                                elif item.get('tipo') == 9:
+                                    checkpoint = item.get('checkpoint', {})
+                                    if isinstance(checkpoint, dict):
+                                        checkpoint_nome = checkpoint.get('nome', '').upper()
+                                        if 'MQL' in checkpoint_nome:
+                                            tem_mql_timeline = True
+                                            break
+                    except:
+                        pass
                 
                 status = 'aberto'
                 if projeto.get('concluido'):
@@ -2029,6 +2070,10 @@ def verificar_sults_leads():
                     'ganhos': {
                         'total': len(leads_ganhos),
                         'dados': leads_ganhos[:50]
+                    },
+                    'mql': {
+                        'total': total_mql,
+                        'dados': leads_mql[:50]
                     }
                 },
                 'resumo': {
@@ -2036,7 +2081,8 @@ def verificar_sults_leads():
                     'total_projetos': len(projetos),
                     'leads_abertos': len(leads_abertos),
                     'leads_perdidos': len(leads_perdidos),
-                    'leads_ganhos': len(leads_ganhos)
+                    'leads_ganhos': len(leads_ganhos),
+                    'leads_mql': total_mql
                 },
                 'estatisticas': {
                     'leads_por_fase': leads_por_fase,
