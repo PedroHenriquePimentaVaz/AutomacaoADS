@@ -1784,6 +1784,78 @@ def get_sults_chamados():
             'error': f'Erro ao buscar chamados: {str(e)}'
         }), 500
 
+@app.route('/api/sults/verificar-leads', methods=['GET'])
+def verificar_sults_leads():
+    """Endpoint simplificado para verificar leads abertos e perdidos da SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Integração SULTS não disponível'
+        }), 503
+    
+    try:
+        client = SultsAPIClient()
+        
+        # Verificar token configurado
+        token = os.getenv('SULTS_API_TOKEN', '')
+        token_status = '✅ Configurado' if token else '❌ Não configurado'
+        
+        # Tentar buscar leads
+        try:
+            leads_data = client.get_leads_by_status()
+            
+            # Organizar dados de forma clara
+            resultado = {
+                'token_status': token_status,
+                'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                'base_url': client.BASE_URL,
+                'timestamp': datetime.now().isoformat(),
+                'leads': {
+                    'abertos': {
+                        'total': len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0,
+                        'dados': leads_data.get('abertos', [])[:10] if isinstance(leads_data.get('abertos'), list) else []
+                    },
+                    'perdidos': {
+                        'total': len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0,
+                        'dados': leads_data.get('perdidos', [])[:10] if isinstance(leads_data.get('perdidos'), list) else []
+                    },
+                    'ganhos': {
+                        'total': len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0,
+                        'dados': leads_data.get('ganhos', [])[:10] if isinstance(leads_data.get('ganhos'), list) else []
+                    }
+                },
+                'resumo': {
+                    'total_leads': (
+                        (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0) +
+                        (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0) +
+                        (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0)
+                    )
+                }
+            }
+            
+            return jsonify({
+                'success': True,
+                'message': '✅ Conexão com SULTS funcionando!',
+                'data': resultado
+            })
+        except Exception as api_error:
+            return jsonify({
+                'success': False,
+                'token_status': token_status,
+                'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                'base_url': client.BASE_URL,
+                'error': f'Erro ao buscar leads: {str(api_error)}',
+                'sugestao': 'Execute /api/sults/diagnose para ver detalhes do problema'
+            }), 500
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Erro geral: {str(e)}'
+        }), 500
+
 @app.route('/api/sults/leads-status', methods=['GET'])
 def get_sults_leads_status():
     """Busca leads da SULTS organizados por status (abertos, perdidos, ganhos)"""
