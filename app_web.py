@@ -1833,7 +1833,7 @@ def verificar_sults_leads():
                 projetos = client.get_projetos()
                 
                 # Filtrar apenas projetos de franqueados
-                # Projetos de franqueados têm funil com nome "Franqueados" ou nome contém "Franqueado"
+                # Excluir explicitamente lojas e manter apenas franqueados
                 projetos_franqueados = []
                 for projeto in projetos:
                     etapa = projeto.get('etapa', {})
@@ -1842,13 +1842,17 @@ def verificar_sults_leads():
                     funil_id = funil.get('id') if isinstance(funil, dict) else None
                     projeto_nome = projeto.get('nome', '').lower()
                     
-                    # Filtrar apenas projetos do funil "Franqueados" (ID 1) ou que tenham "franqueado" no nome
+                    # Excluir lojas explicitamente
+                    if 'loja' in funil_nome or 'loja' in projeto_nome:
+                        continue
+                    
+                    # Incluir apenas projetos do funil "Franqueados" (ID 1) ou que tenham "franqueado" no nome
                     # Funil ID 1 geralmente é "Franqueados"
-                    if funil_id == 1 or 'franqueado' in funil_nome or 'franqueado' in projeto_nome:
+                    if funil_id == 1 or ('franqueado' in funil_nome and 'loja' not in funil_nome) or ('franqueado' in projeto_nome and 'loja' not in projeto_nome):
                         projetos_franqueados.append(projeto)
                 
                 projetos = projetos_franqueados
-                print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro")
+                print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro (lojas excluídas)")
             
             
             # Transformar projetos em leads para exibição
@@ -1879,10 +1883,14 @@ def verificar_sults_leads():
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
                 # Fase: usar etapa se disponível, senão usar categoria + status
+                # Filtrar lojas do nome da fase
                 if etapa_nome and etapa_nome != 'Sem etapa':
                     fase = etapa_nome
-                    if funil_nome:
+                    if funil_nome and 'loja' not in funil_nome.lower():
                         fase = f"{funil_nome} - {etapa_nome}"
+                    elif 'loja' in funil_nome.lower():
+                        # Pular este projeto se for de loja
+                        continue
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
                 
