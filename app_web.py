@@ -2014,6 +2014,8 @@ def verificar_sults_leads():
                     'valor': projeto.get('valor', 0.0),
                     'origem': projeto.get('origem', {}).get('nome', 'SULTS') if isinstance(projeto.get('origem'), dict) else 'SULTS',
                     'temperatura': projeto.get('temperatura', {}).get('nome', '') if isinstance(projeto.get('temperatura'), dict) else '',
+                    'etiquetas': etiquetas_nomes,
+                    'tem_mql': tem_mql,
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 
@@ -2023,6 +2025,11 @@ def verificar_sults_leads():
                     leads_ganhos.append(lead_data)
                 else:
                     leads_perdidos.append(lead_data)
+                
+                # Adicionar aos MQLs se tiver etiqueta MQL
+                if tem_mql:
+                    leads_mql.append(lead_data)
+                    total_mql += 1
             
             total_leads = len(projetos)
             
