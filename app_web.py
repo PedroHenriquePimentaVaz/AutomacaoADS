@@ -1794,59 +1794,75 @@ def verificar_sults_leads():
         }), 503
     
     try:
-        client = SultsAPIClient()
-        
-        # Verificar token configurado
         token = os.getenv('SULTS_API_TOKEN', '')
         token_status = '✅ Configurado' if token else '❌ Não configurado'
         
-        # Tentar buscar leads
-        try:
-            leads_data = client.get_leads_by_status()
-            
-            # Organizar dados de forma clara
-            resultado = {
-                'token_status': token_status,
-                'token_preview': token[:20] + '...' if len(token) > 20 else token,
-                'base_url': client.BASE_URL,
-                'timestamp': datetime.now().isoformat(),
-                'leads': {
-                    'abertos': {
-                        'total': len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0,
-                        'dados': leads_data.get('abertos', [])[:10] if isinstance(leads_data.get('abertos'), list) else []
-                    },
-                    'perdidos': {
-                        'total': len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0,
-                        'dados': leads_data.get('perdidos', [])[:10] if isinstance(leads_data.get('perdidos'), list) else []
-                    },
-                    'ganhos': {
-                        'total': len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0,
-                        'dados': leads_data.get('ganhos', [])[:10] if isinstance(leads_data.get('ganhos'), list) else []
-                    }
-                },
-                'resumo': {
-                    'total_leads': (
-                        (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0) +
-                        (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0) +
-                        (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0)
-                    )
-                }
-            }
-            
-            return jsonify({
-                'success': True,
-                'message': '✅ Conexão com SULTS funcionando!',
-                'data': resultado
-            })
-        except Exception as api_error:
-            return jsonify({
-                'success': False,
-                'token_status': token_status,
-                'token_preview': token[:20] + '...' if len(token) > 20 else token,
-                'base_url': client.BASE_URL,
-                'error': f'Erro ao buscar leads: {str(api_error)}',
-                'sugestao': 'Execute /api/sults/diagnose para ver detalhes do problema'
-            }), 500
+        # Testar diferentes URLs base e endpoints
+        base_urls = [
+            "https://api.sults.com.br/v1",
+            "https://behonestbrasil.sults.com.br/api/v1",
+            "https://behonestbrasil.sults.com.br/api",
+            "https://app.sults.com.br/api/v1",
+            "https://developer.sults.com.br/api/v1"
+        ]
+        
+        endpoints = ["/chamados", "/leads", "/api/chamados", "/api/leads"]
+        auth_formats = ['token', 'bearer']
+        
+        # Tentar diferentes combinações
+        for base_url in base_urls:
+            for endpoint in endpoints:
+                for auth_format in auth_formats:
+                    try:
+                        client = SultsAPIClient(token=token, base_url=base_url, auth_format=auth_format)
+                        leads_data = client.get_leads_by_status()
+                        
+                        # Se chegou aqui, funcionou!
+                        resultado = {
+                            'token_status': token_status,
+                            'token_preview': token[:20] + '...' if len(token) > 20 else token,
+                            'base_url': base_url,
+                            'endpoint_used': endpoint,
+                            'auth_format': auth_format,
+                            'timestamp': datetime.now().isoformat(),
+                            'leads': {
+                                'abertos': {
+                                    'total': len(leads_data.get('abertos', {}).get('leads', [])) if isinstance(leads_data.get('abertos'), dict) else (len(leads_data.get('abertos', [])) if isinstance(leads_data.get('abertos'), list) else 0),
+                                    'dados': (leads_data.get('abertos', {}).get('leads', [])[:10] if isinstance(leads_data.get('abertos'), dict) else leads_data.get('abertos', [])[:10]) if isinstance(leads_data.get('abertos'), (dict, list)) else []
+                                },
+                                'perdidos': {
+                                    'total': len(leads_data.get('perdidos', {}).get('leads', [])) if isinstance(leads_data.get('perdidos'), dict) else (len(leads_data.get('perdidos', [])) if isinstance(leads_data.get('perdidos'), list) else 0),
+                                    'dados': (leads_data.get('perdidos', {}).get('leads', [])[:10] if isinstance(leads_data.get('perdidos'), dict) else leads_data.get('perdidos', [])[:10]) if isinstance(leads_data.get('perdidos'), (dict, list)) else []
+                                },
+                                'ganhos': {
+                                    'total': len(leads_data.get('ganhos', {}).get('leads', [])) if isinstance(leads_data.get('ganhos'), dict) else (len(leads_data.get('ganhos', [])) if isinstance(leads_data.get('ganhos'), list) else 0),
+                                    'dados': (leads_data.get('ganhos', {}).get('leads', [])[:10] if isinstance(leads_data.get('ganhos'), dict) else leads_data.get('ganhos', [])[:10]) if isinstance(leads_data.get('ganhos'), (dict, list)) else []
+                                }
+                            },
+                            'resumo': {
+                                'total_leads': leads_data.get('total_geral', 0)
+                            }
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'message': f'✅ Conexão com SULTS funcionando! (URL: {base_url}{endpoint})',
+                            'data': resultado
+                        })
+                    except Exception as test_error:
+                        continue
+        
+        # Se nenhuma combinação funcionou, retornar erro
+        return jsonify({
+            'success': False,
+            'token_status': token_status,
+            'token_preview': token[:20] + '...' if len(token) > 20 else token,
+            'error': 'Nenhuma combinação de URL/endpoint funcionou',
+            'sugestao': 'Verifique a documentação em https://developers.sults.com.br/ para a URL base correta. A URL atual testada foi: https://api.sults.com.br/v1/chamados',
+            'tested_combinations': len(base_urls) * len(endpoints) * len(auth_formats),
+            'tested_urls': base_urls,
+            'tested_endpoints': endpoints
+        }), 500
             
     except Exception as e:
         import traceback
