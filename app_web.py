@@ -742,6 +742,8 @@ def analyze_leads_dataframe(df):
         'top_owner': owner_distribution[0] if owner_distribution else None
     }
     
+    mql_to_lead_rate = round((tag_mqls / tag_leads) * 100, 2) if tag_leads > 0 else 0.0
+    
     kpis = {
         'total_leads': total_leads,
         'leads_last_30_days': leads_last_30_days,
@@ -752,6 +754,7 @@ def analyze_leads_dataframe(df):
         'leads_lost': leads_lost,
         'leads_active': leads_active,
         'conversion_rate': conversion_rate,
+        'mql_to_lead_rate': mql_to_lead_rate,
         'tag_leads': tag_leads,
         'tag_mqls': tag_mqls
     }

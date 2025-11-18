@@ -353,11 +353,11 @@ function renderLeadsKPIs() {
         );
     }
     
-    if (kpis.conversion_rate !== undefined) {
+    if (kpis.mql_to_lead_rate !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'Taxa de Conversão',
-                `${kpis.conversion_rate.toFixed(1)}%`,
+                'Taxa de MQL para Lead',
+                `${kpis.mql_to_lead_rate.toFixed(1)}%`,
                 'fas fa-percentage',
                 '#001c54'
             )
