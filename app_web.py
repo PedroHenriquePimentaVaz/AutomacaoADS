@@ -2058,6 +2058,15 @@ def verificar_sults_leads():
             
             total_leads = len(leads_abertos)
             
+            # Log final para debug
+            print(f"\n📊 RESUMO FINAL:")
+            print(f"   Total de projetos processados: {len(projetos)}")
+            print(f"   Leads em aberto: {len(leads_abertos)}")
+            print(f"   MQLs encontrados (TODOS os status): {total_mql}")
+            print(f"   MQLs em aberto: {len([m for m in leads_mql if m.get('status') == 'aberto'])}")
+            print(f"   MQLs ganhos: {len([m for m in leads_mql if m.get('status') == 'ganho'])}")
+            print(f"   MQLs perdidos: {len([m for m in leads_mql if m.get('status') == 'perdido'])}")
+            
             resultado = {
                 'token_status': token_status,
                 'token_preview': token[:20] + '...' if len(token) > 20 else token,
