@@ -2038,10 +2038,11 @@ def verificar_sults_leads():
                 # Contadores considerando apenas leads em aberto
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
-                # Armazenar fase com informação de ordenação
+                # Armazenar fase com informação de ordenação (otimizado)
                 if fase not in leads_por_fase:
-                    leads_por_fase[fase] = {'count': 0, 'ordem': fase_ordem}
-                leads_por_fase[fase]['count'] += 1
+                    leads_por_fase[fase] = {'count': 1, 'ordem': fase_ordem}
+                else:
+                    leads_por_fase[fase]['count'] += 1
                 
                 leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
