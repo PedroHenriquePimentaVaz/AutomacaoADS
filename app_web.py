@@ -1944,8 +1944,15 @@ def verificar_sults_leads():
                             etiqueta_nome = etiqueta.get('nome', '')
                             etiquetas_nomes.append(etiqueta_nome)
                             # Verificar se a etiqueta contém MQL (case insensitive)
-                            if 'MQL' in etiqueta_nome.upper():
+                            # Aceitar variações: MQL, mql, Mql, etc.
+                            etiqueta_upper = etiqueta_nome.upper().strip()
+                            if 'MQL' in etiqueta_upper:
                                 tem_mql = True
+                                print(f"✅ MQL encontrado no projeto {projeto.get('id')}: {etiqueta_nome}")
+                
+                # Log para debug: verificar todos os projetos com etiquetas
+                if etiquetas and len(etiquetas) > 0:
+                    print(f"🔍 Projeto {projeto.get('id')} - Etiquetas: {[e.get('nome', '') if isinstance(e, dict) else str(e) for e in etiquetas]}")
                 
                 # Extrair informações de contato (para negócios de franqueados)
                 contato_pessoa = projeto.get('contatoPessoa', [])
@@ -1987,9 +1994,6 @@ def verificar_sults_leads():
                     else:
                         status = 'aberto'
                 
-                # Extrair ID da etapa para ordenação
-                etapa_id = etapa.get('id') if isinstance(etapa, dict) else None
-                
                 lead_data = {
                     'id': projeto.get('id'),
                     'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
@@ -2000,7 +2004,6 @@ def verificar_sults_leads():
                     'categoria': categoria_nome,
                     'fase': fase,
                     'etapa': etapa_nome,
-                    'etapa_id': etapa_id,  # ID da etapa para ordenação
                     'funil': funil_nome,
                     'status': status,
                     'situacao': situacao_nome,
