@@ -1349,6 +1349,51 @@ function initializeCharts() {
         });
     }
 
+    const leadOwnerCtx = document.getElementById('leadOwnerChart');
+    if (leadOwnerCtx) {
+        leadOwnerChart = new Chart(leadOwnerCtx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Leads',
+                    data: [],
+                    backgroundColor: 'rgba(0, 28, 84, 0.85)',
+                    borderColor: '#001c54',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 function renderCharts() {
