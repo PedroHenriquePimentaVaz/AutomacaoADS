@@ -2237,6 +2237,18 @@ function displaySultsData(data) {
         timestamp: new Date().toISOString()
     };
     
+    // Adicionar distribuições para os gráficos
+    currentLeadsData.distributions = {
+        source: Object.entries(sultsLeads.estatisticas.leads_por_unidade || {}).map(([label, value]) => ({
+            label: label || 'Sem origem',
+            value: value || 0
+        })).sort((a, b) => b.value - a.value).slice(0, 10),
+        owner: Object.entries(sultsLeads.estatisticas.leads_por_responsavel || {}).map(([label, value]) => ({
+            label: label || 'Sem responsável',
+            value: value || 0
+        })).sort((a, b) => b.value - a.value).slice(0, 10)
+    };
+    
     filteredLeadsData = currentLeadsData;
     
     console.log('Dados finais preparados:', currentLeadsData);
