@@ -474,6 +474,21 @@
                     <div class="charts-section leads-charts">
                         <div class="chart-card">
                             <div class="chart-header">
+                                <h3>Status dos Leads</h3>
+                                <div class="chart-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportLeadChart('status')">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="leadStatusChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
                                 <h3>Origem dos Leads</h3>
                                 <div class="chart-actions">
                                     <button class="btn btn-sm btn-outline" onclick="exportLeadChart('source')">
@@ -486,9 +501,28 @@
                                 <canvas id="leadSourceChart"></canvas>
                             </div>
                         </div>
+
+                        <div class="chart-card full-width">
+                            <div class="chart-header">
+                                <h3>Evolução Mensal</h3>
+                                <div class="chart-actions">
+                                    <button class="btn btn-sm btn-outline" onclick="exportLeadChart('timeline')">
+                                        <i class="fas fa-download"></i>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="leadTimelineChart"></canvas>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="leads-distribution-section">
+                        <div class="distribution-card">
+                            <h4><i class="fas fa-stream"></i> Principais Status</h4>
+                            <div class="distribution-list" id="leadStatusList"></div>
+                        </div>
                         <div class="distribution-card">
                             <h4><i class="fas fa-bullhorn"></i> Principais Origens</h4>
                             <div class="distribution-list" id="leadSourceList"></div>

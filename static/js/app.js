@@ -9,7 +9,9 @@ let costsChart = null;
 let conversionChart = null;
 let campaignsChart = null;
 let filteredData = null;
+let leadStatusChart = null;
 let leadSourceChart = null;
+let leadTimelineChart = null;
 let filteredLeadsData = null;
 
 // DOM Elements
@@ -29,6 +31,7 @@ const leadsTableHead = document.getElementById('leadsTableHead');
 const leadsTableBody = document.getElementById('leadsTableBody');
 const leadsRecentHead = document.getElementById('leadsRecentHead');
 const leadsRecentBody = document.getElementById('leadsRecentBody');
+const leadStatusList = document.getElementById('leadStatusList');
 const leadSourceList = document.getElementById('leadSourceList');
 const leadOwnerList = document.getElementById('leadOwnerList');
 const leadSearchInput = document.getElementById('leadSearchInput');
@@ -391,14 +394,99 @@ function renderLeadCharts() {
     if (!filteredLeadsData) return;
     
     const distributions = filteredLeadsData.distributions || {};
+    const estatisticas = filteredLeadsData.estatisticas || {};
     
-    // Renderizar apenas gráfico de origem dos leads
+    // Garantir que estatisticas existe
+    if (!estatisticas) {
+        console.warn('Estatísticas não disponíveis');
+        return;
+    }
+    
+    // Renderizar apenas gráficos de Origem e Responsável
     if (leadSourceChart) {
         const sourceData = distributions.source || [];
-        leadSourceChart.data.labels = sourceData.map(item => item.label);
-        leadSourceChart.data.datasets[0].data = sourceData.map(item => item.value);
-        leadSourceChart.update();
+        if (sourceData && sourceData.length > 0) {
+            leadSourceChart.data.labels = sourceData.map(item => item.label);
+            leadSourceChart.data.datasets[0].data = sourceData.map(item => item.value);
+            leadSourceChart.update();
+        }
     }
+    
+    // Renderizar gráfico de responsável
+    if (leadOwnerChart && estatisticas.leads_por_responsavel && typeof estatisticas.leads_por_responsavel === 'object' && Object.keys(estatisticas.leads_por_responsavel).length > 0) {
+        const responsavelData = estatisticas.leads_por_responsavel;
+        const labels = Object.keys(responsavelData);
+        const values = Object.values(responsavelData);
+        
+        // Ordenar por quantidade (maior para menor) e pegar top 10
+        const sorted = labels.map((label, index) => ({ label, value: values[index] }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+        
+        leadOwnerChart.data.labels = sorted.map(item => item.label);
+        leadOwnerChart.data.datasets[0].data = sorted.map(item => item.value);
+        leadOwnerChart.update();
+    }
+}
+
+function renderLeadsByResponsavelChart(data) {
+    const canvasId = 'leadOwnerChart';
+    let canvas = document.getElementById(canvasId);
+    
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    if (leadOwnerChart) {
+        leadOwnerChart.destroy();
+    }
+    
+    const labels = Object.keys(data);
+    const values = Object.values(data);
+    
+    // Ordenar por quantidade (maior para menor)
+    const sorted = labels.map((label, index) => ({ label, value: values[index] }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10); // Top 10 responsáveis
+    
+    leadOwnerChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sorted.map(item => item.label),
+            datasets: [{
+                label: 'Leads',
+                data: sorted.map(item => item.value),
+                backgroundColor: 'rgba(35, 116, 185, 0.8)',
+                borderColor: '#2374B9',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.parsed.x} leads`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
 }
 
 function renderLeadsByPhaseChart(data) {
@@ -654,6 +742,7 @@ function renderLeadDistributions() {
         }
     }
     
+    populateDistributionList(leadStatusList, distributions.status, 'Leads');
     populateDistributionList(leadSourceList, distributions.source, 'Leads');
     populateDistributionList(leadOwnerList, distributions.owner, 'Leads');
 }
@@ -1271,9 +1360,43 @@ function initializeCharts() {
         }
     });
 
-    const leadSourceCtx = document.getElementById('leadSourceChart');
-    if (leadSourceCtx) {
-        leadSourceChart = new Chart(leadSourceCtx.getContext('2d'), {
+    const leadStatusCtx = document.getElementById('leadStatusChart');
+    if (leadStatusCtx) {
+        leadStatusChart = new Chart(leadStatusCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [
+                        '#001c54',
+                        '#2374b9',
+                        '#edb125',
+                        '#de5e36',
+                        '#10B981',
+                        '#8B5CF6',
+                        '#6B7280'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    // Gráfico de Responsável pelos Leads
+    const leadOwnerCtx = document.getElementById('leadOwnerChart');
+    if (leadOwnerCtx) {
+        leadOwnerChart = new Chart(leadOwnerCtx.getContext('2d'), {
             type: 'bar',
             data: {
                 labels: [],
@@ -1317,6 +1440,52 @@ function initializeCharts() {
         });
     }
 
+    const leadTimelineCtx = document.getElementById('leadTimelineChart');
+    if (leadTimelineCtx) {
+        leadTimelineChart = new Chart(leadTimelineCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Leads',
+                    data: [],
+                    borderColor: '#edb125',
+                    backgroundColor: 'rgba(237, 177, 37, 0.15)',
+                    borderWidth: 3,
+                    tension: 0.35,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#E5E7EB'
+                        },
+                        ticks: {
+                            color: '#6B7280'
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 function renderCharts() {
