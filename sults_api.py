@@ -298,7 +298,7 @@ class SultsAPIClient:
         if 'start' not in params:
             params['start'] = 0
         if 'limit' not in params:
-            params['limit'] = 100
+            params['limit'] = 1000  # Aumentar limite padrão para reduzir requisições
         
         # Filtrar por funil de franqueados (ID 1 geralmente é Franqueados)
         if 'funil' not in params:
