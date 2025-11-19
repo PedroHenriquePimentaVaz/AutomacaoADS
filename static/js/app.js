@@ -566,7 +566,20 @@ function renderLeadDistributions() {
         const faseList = document.getElementById('leadFaseList');
         if (faseList) {
             faseList.innerHTML = '';
-            const sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => b[1] - a[1]);
+            
+            // Ordenar pela ordem do funil se disponível
+            const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
+            let sorted;
+            if (Object.keys(fasesComOrdem).length > 0) {
+                sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => {
+                    const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
+                    const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
+                    return ordemA - ordemB;
+                });
+            } else {
+                sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => b[1] - a[1]);
+            }
+            
             sorted.forEach(([fase, count]) => {
                 const item = document.createElement('div');
                 item.className = 'distribution-item';
@@ -748,43 +761,8 @@ function renderLeadsByPhase() {
     
     container.innerHTML = '';
     
-    // Ordem lógica do funil de vendas (do início ao fim)
-    const faseOrder = [
-        'conexão',
-        'conexao',
-        'apresentação financeira agendada',
-        'apresentacao financeira agendada',
-        'reunião financeira realizada',
-        'reuniao financeira realizada',
-        'reunião fundador agendada',
-        'reuniao fundador agendada',
-        'aguardando decisão',
-        'aguardando decisao',
-        'contrato franquia',
-        'contrato'
-    ];
-    
-    // Função para obter a ordem de uma fase
-    function getFaseOrder(fase) {
-        const faseLower = fase.toLowerCase();
-        // Remover prefixo "franqueados - " se existir
-        const faseClean = faseLower.replace(/^franqueados\s*-\s*/i, '').trim();
-        
-        for (let i = 0; i < faseOrder.length; i++) {
-            if (faseClean.includes(faseOrder[i])) {
-                return i;
-            }
-        }
-        // Se não encontrar, ordenar alfabeticamente no final
-        return 999 + faseClean.charCodeAt(0);
-    }
-    
-    // Ordenar fases pela ordem lógica do funil
-    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => {
-        const orderA = getFaseOrder(a[0]);
-        const orderB = getFaseOrder(b[0]);
-        return orderA - orderB;
-    });
+    // Ordenar fases por quantidade de leads
+    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
     
     sortedPhases.forEach(([fase, faseLeads]) => {
         const phaseCard = document.createElement('div');
@@ -2138,6 +2116,7 @@ function displaySultsData(data) {
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
+            leads_por_fase_com_ordem: data.estatisticas?.leads_por_fase_com_ordem || {},
             leads_por_categoria: sultsLeads.estatisticas.leads_por_categoria || {},
             leads_por_responsavel: sultsLeads.estatisticas.leads_por_responsavel || {},
             leads_por_unidade: sultsLeads.estatisticas.leads_por_unidade || {}

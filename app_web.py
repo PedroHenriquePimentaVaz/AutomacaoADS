@@ -1924,6 +1924,7 @@ def verificar_sults_leads():
                 
                 # Extrair etapa/fase do projeto
                 etapa_nome = etapa.get('nome', 'Sem etapa') if isinstance(etapa, dict) else 'Sem etapa'
+                etapa_id = etapa.get('id') if isinstance(etapa, dict) else None
                 
                 # Extrair categoria
                 categoria = projeto.get('categoria', {})
@@ -1938,6 +1939,10 @@ def verificar_sults_leads():
                     # Se funil contém loja, já foi filtrado acima
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
+                
+                # Armazenar ID da etapa para ordenação posterior
+                # Usar um ID alto para fases sem etapa definida (vão para o final)
+                fase_ordem = etapa_id if etapa_id is not None else 9999
                 
                 # Contar por responsável
                 responsavel = projeto.get('responsavel', {})
@@ -2038,7 +2043,12 @@ def verificar_sults_leads():
                 
                 # Contadores considerando apenas leads em aberto
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
-                leads_por_fase[fase] = leads_por_fase.get(fase, 0) + 1
+                
+                # Armazenar fase com informação de ordenação
+                if fase not in leads_por_fase:
+                    leads_por_fase[fase] = {'count': 0, 'ordem': fase_ordem}
+                leads_por_fase[fase]['count'] += 1
+                
                 leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
@@ -2092,7 +2102,8 @@ def verificar_sults_leads():
                     'leads_mql': total_mql
                 },
                 'estatisticas': {
-                    'leads_por_fase': leads_por_fase,
+                    'leads_por_fase': leads_por_fase_simples,
+                    'leads_por_fase_com_ordem': leads_por_fase,  # Manter estrutura completa para ordenação
                     'leads_por_categoria': leads_por_categoria,
                     'leads_por_responsavel': leads_por_responsavel,
                     'leads_por_unidade': leads_por_unidade
