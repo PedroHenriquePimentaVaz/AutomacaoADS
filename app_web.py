@@ -1876,6 +1876,22 @@ def verificar_sults_leads():
             projetos = projetos_filtrados_final
             print(f"✅ Após filtro final: {len(projetos)} negócios de franqueados (sem lojas)")
             
+            # Contar projetos com etiquetas antes do processamento
+            projetos_com_etiquetas = 0
+            projetos_com_mql = 0
+            for p in projetos:
+                etiquetas = p.get('etiqueta', [])
+                if etiquetas and len(etiquetas) > 0:
+                    projetos_com_etiquetas += 1
+                    for etq in etiquetas:
+                        if isinstance(etq, dict):
+                            nome_etq = etq.get('nome', '').upper().strip()
+                            if 'MQL' in nome_etq:
+                                projetos_com_mql += 1
+                                break
+            print(f"🔍 Projetos com etiquetas: {projetos_com_etiquetas}")
+            print(f"🔍 Projetos com etiqueta MQL (antes do filtro de status): {projetos_com_mql}")
+            
             # Transformar projetos em leads para exibição
             leads_abertos = []
             leads_perdidos = []
@@ -2021,6 +2037,14 @@ def verificar_sults_leads():
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 
+                # IMPORTANTE: MQLs devem ser contados ANTES do filtro de status
+                # Contar todos os MQLs independente do status (aberto, ganho, perdido)
+                if tem_mql:
+                    leads_mql.append(lead_data)
+                    total_mql += 1
+                    print(f"📊 MQL adicionado: ID {projeto.get('id')}, Status: {status}, Etiquetas: {etiquetas_nomes}")
+                
+                # Filtrar apenas leads em aberto para estatísticas e exibição
                 if status != 'aberto':
                     continue
                 
@@ -2031,11 +2055,6 @@ def verificar_sults_leads():
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 leads_abertos.append(lead_data)
-                
-                # Adicionar aos MQLs se tiver etiqueta MQL
-                if tem_mql:
-                    leads_mql.append(lead_data)
-                    total_mql += 1
             
             total_leads = len(leads_abertos)
             
