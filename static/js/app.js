@@ -393,7 +393,7 @@ function renderLeadsKPIs() {
                     `${topFase[0].substring(0, 20)}${topFase[0].length > 20 ? '...' : ''}`,
                     'fas fa-layer-group',
                     '#2374B9'
-            )
+                )
             );
         }
     }
