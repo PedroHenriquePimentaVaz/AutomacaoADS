@@ -1303,37 +1303,6 @@ function initializeCharts() {
         }
     });
 
-    // Removido: gráfico de status dos leads
-            type: 'doughnut',
-            data: {
-                labels: [],
-                datasets: [{
-                    data: [],
-                    backgroundColor: [
-                        '#001c54',
-                        '#2374b9',
-                        '#edb125',
-                        '#de5e36',
-                        '#10B981',
-                        '#8B5CF6',
-                        '#6B7280'
-                    ],
-                    borderWidth: 2,
-                    borderColor: '#ffffff'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    }
-                }
-            }
-        });
-    }
-
     const leadSourceCtx = document.getElementById('leadSourceChart');
     if (leadSourceCtx) {
         leadSourceChart = new Chart(leadSourceCtx.getContext('2d'), {
