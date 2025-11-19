@@ -1317,52 +1317,6 @@ function initializeCharts() {
         });
     }
 
-    const leadTimelineCtx = document.getElementById('leadTimelineChart');
-    if (leadTimelineCtx) {
-        leadTimelineChart = new Chart(leadTimelineCtx.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Leads',
-                    data: [],
-                    borderColor: '#edb125',
-                    backgroundColor: 'rgba(237, 177, 37, 0.15)',
-                    borderWidth: 3,
-                    tension: 0.35,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: '#E5E7EB'
-                        },
-                        ticks: {
-                            color: '#6B7280'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            color: '#E5E7EB'
-                        },
-                        ticks: {
-                            color: '#6B7280'
-                        }
-                    }
-                }
-            }
-        });
-    }
 }
 
 function renderCharts() {
