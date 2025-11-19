@@ -1964,11 +1964,6 @@ def verificar_sults_leads():
                             etiqueta_upper = etiqueta_nome.upper().strip()
                             if 'MQL' in etiqueta_upper:
                                 tem_mql = True
-                                print(f"✅ MQL encontrado no projeto {projeto.get('id')}: {etiqueta_nome}")
-                
-                # Log para debug: verificar todos os projetos com etiquetas
-                if etiquetas and len(etiquetas) > 0:
-                    print(f"🔍 Projeto {projeto.get('id')} - Etiquetas: {[e.get('nome', '') if isinstance(e, dict) else str(e) for e in etiquetas]}")
                 
                 # Extrair informações de contato (para negócios de franqueados)
                 contato_pessoa = projeto.get('contatoPessoa', [])
@@ -2037,14 +2032,7 @@ def verificar_sults_leads():
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 
-                # IMPORTANTE: MQLs devem ser contados ANTES do filtro de status
-                # Contar todos os MQLs independente do status (aberto, ganho, perdido)
-                if tem_mql:
-                    leads_mql.append(lead_data)
-                    total_mql += 1
-                    print(f"📊 MQL adicionado: ID {projeto.get('id')}, Status: {status}, Etiquetas: {etiquetas_nomes}")
-                
-                # Filtrar apenas leads em aberto para estatísticas e exibição
+                # Filtrar apenas leads em aberto para estatísticas, exibição e MQLs
                 if status != 'aberto':
                     continue
                 
@@ -2055,6 +2043,12 @@ def verificar_sults_leads():
                 leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 leads_abertos.append(lead_data)
+                
+                # Adicionar aos MQLs apenas se estiver em aberto E tiver etiqueta MQL
+                if tem_mql:
+                    leads_mql.append(lead_data)
+                    total_mql += 1
+                    print(f"📊 MQL em andamento encontrado: ID {projeto.get('id')}, Etiquetas: {etiquetas_nomes}")
             
             total_leads = len(leads_abertos)
             
@@ -2062,10 +2056,7 @@ def verificar_sults_leads():
             print(f"\n📊 RESUMO FINAL:")
             print(f"   Total de projetos processados: {len(projetos)}")
             print(f"   Leads em aberto: {len(leads_abertos)}")
-            print(f"   MQLs encontrados (TODOS os status): {total_mql}")
-            print(f"   MQLs em aberto: {len([m for m in leads_mql if m.get('status') == 'aberto'])}")
-            print(f"   MQLs ganhos: {len([m for m in leads_mql if m.get('status') == 'ganho'])}")
-            print(f"   MQLs perdidos: {len([m for m in leads_mql if m.get('status') == 'perdido'])}")
+            print(f"   MQLs em andamento (apenas status 'aberto'): {total_mql}")
             
             resultado = {
                 'token_status': token_status,
