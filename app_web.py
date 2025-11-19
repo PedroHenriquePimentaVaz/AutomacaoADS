@@ -1899,17 +1899,17 @@ def verificar_sults_leads():
             leads_ganhos = []
             leads_mql = []  # Leads com etiqueta MQL
             leads_por_fase = {}
+            leads_por_fase_conversao = {}  # Para taxa de conversão: inclui todos os leads do mês atual
             leads_por_categoria = {}
             leads_por_responsavel = {}
             leads_por_unidade = {}
-            leads_por_fase_conversao = {}  # Para taxa de conversão: inclui todos os leads do mês atual
             total_mql = 0
             
-            # Obter mês atual para filtrar leads
+            # Data atual para filtrar leads do mês atual
             from datetime import datetime
-            hoje = datetime.now()
-            mes_atual = hoje.month
-            ano_atual = hoje.year
+            data_atual = datetime.now()
+            mes_atual = data_atual.month
+            ano_atual = data_atual.year
             
             for projeto in projetos:
                 # Verificação final: pular se for loja (otimizado)
@@ -2022,33 +2022,6 @@ def verificar_sults_leads():
                     else:
                         status = 'aberto'
                 
-                # Obter data de criação para filtrar por mês atual
-                data_criacao_str = projeto.get('dtCadastro', '') or projeto.get('dtCriacao', '') or projeto.get('dtInicio', '')
-                data_criacao_obj = None
-                is_mes_atual = False
-                
-                if data_criacao_str:
-                    try:
-                        # Tentar diferentes formatos de data
-                        if isinstance(data_criacao_str, str):
-                            # Formato: YYYY-MM-DD ou DD/MM/YYYY
-                            if '-' in data_criacao_str:
-                                data_criacao_obj = datetime.strptime(data_criacao_str.split('T')[0], '%Y-%m-%d')
-                            elif '/' in data_criacao_str:
-                                data_criacao_obj = datetime.strptime(data_criacao_str.split(' ')[0], '%d/%m/%Y')
-                        elif isinstance(data_criacao_str, (int, float)):
-                            # Timestamp
-                            data_criacao_obj = datetime.fromtimestamp(data_criacao_str / 1000 if data_criacao_str > 1e10 else data_criacao_str)
-                        
-                        if data_criacao_obj:
-                            is_mes_atual = (data_criacao_obj.month == mes_atual and data_criacao_obj.year == ano_atual)
-                    except Exception:
-                        # Se não conseguir parsear, considerar como mês atual por padrão
-                        is_mes_atual = True
-                else:
-                    # Se não tiver data, considerar como mês atual
-                    is_mes_atual = True
-                
                 # Otimizar extração de dados (evitar múltiplos .get() no mesmo objeto)
                 origem_obj = projeto.get('origem', {})
                 origem_nome = origem_obj.get('nome', 'SULTS') if isinstance(origem_obj, dict) else 'SULTS'
@@ -2069,7 +2042,7 @@ def verificar_sults_leads():
                     'status': status,
                     'situacao': situacao_nome,
                     'ativo': True,
-                    'data_criacao': data_criacao_str,
+                    'data_criacao': projeto.get('dtCadastro', '') or projeto.get('dtCriacao', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
                     'data_fim': projeto.get('dtConclusao', '') or projeto.get('dtFim', ''),
                     'cidade': projeto.get('cidade', ''),
@@ -2082,18 +2055,41 @@ def verificar_sults_leads():
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 
-                # Adicionar leads ganhos e perdidos às suas listas
-                if status == 'ganho':
-                    leads_ganhos.append(lead_data)
-                elif status == 'perdido':
-                    leads_perdidos.append(lead_data)
+                # Verificar se o lead é do mês atual para taxa de conversão
+                data_criacao_str = projeto.get('dtCadastro', '') or projeto.get('dtCriacao', '')
+                is_mes_atual = False
+                if data_criacao_str:
+                    try:
+                        if isinstance(data_criacao_str, str):
+                            # Tentar diferentes formatos de data
+                            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y', '%d-%m-%Y']:
+                                try:
+                                    data_criacao = datetime.strptime(data_criacao_str.split('T')[0] if 'T' in data_criacao_str else data_criacao_str.split(' ')[0], fmt)
+                                    if data_criacao.month == mes_atual and data_criacao.year == ano_atual:
+                                        is_mes_atual = True
+                                        break
+                                except:
+                                    continue
+                        elif isinstance(data_criacao_str, (int, float)):
+                            # Timestamp
+                            data_criacao = datetime.fromtimestamp(data_criacao_str / 1000 if data_criacao_str > 1e10 else data_criacao_str)
+                            if data_criacao.month == mes_atual and data_criacao.year == ano_atual:
+                                is_mes_atual = True
+                    except:
+                        pass
                 
-                # Para taxa de conversão: contar TODOS os leads do mês atual (abertos, ganhos, perdidos)
+                # Para taxa de conversão: contar todos os leads do mês atual (abertos, perdidos, ganhos)
                 if is_mes_atual:
                     if fase not in leads_por_fase_conversao:
                         leads_por_fase_conversao[fase] = {'count': 1, 'ordem': fase_ordem}
                     else:
                         leads_por_fase_conversao[fase]['count'] += 1
+                
+                # Classificar lead por status
+                if status == 'perdido':
+                    leads_perdidos.append(lead_data)
+                elif status == 'ganho':
+                    leads_ganhos.append(lead_data)
                 
                 # Filtrar apenas leads em aberto para estatísticas, exibição e MQLs
                 if status != 'aberto':
@@ -2159,8 +2155,6 @@ def verificar_sults_leads():
                 'estatisticas': {
                     'leads_por_fase': {k: v['count'] if isinstance(v, dict) else v for k, v in leads_por_fase.items()},
                     'leads_por_fase_ordem': {k: v['ordem'] if isinstance(v, dict) else 9999 for k, v in leads_por_fase.items()},
-                    'leads_por_fase_conversao': {k: v['count'] if isinstance(v, dict) else v for k, v in leads_por_fase_conversao.items()},
-                    'leads_por_fase_conversao_ordem': {k: v['ordem'] if isinstance(v, dict) else 9999 for k, v in leads_por_fase_conversao.items()},
                     'leads_por_categoria': leads_por_categoria,
                     'leads_por_responsavel': leads_por_responsavel,
                     'leads_por_unidade': leads_por_unidade
