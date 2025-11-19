@@ -401,30 +401,56 @@ function renderLeadCharts() {
         return;
     }
     
-    // Renderizar apenas gráficos de Origem e Responsável
-    if (leadSourceChart) {
+    // Renderizar cards de Origem
+    const sourceCardsContainer = document.getElementById('leadSourceCards');
+    if (sourceCardsContainer) {
+        sourceCardsContainer.innerHTML = '';
         const sourceData = distributions.source || [];
         if (sourceData && sourceData.length > 0) {
-            leadSourceChart.data.labels = sourceData.map(item => item.label);
-            leadSourceChart.data.datasets[0].data = sourceData.map(item => item.value);
-            leadSourceChart.update();
+            // Ordenar por quantidade (maior para menor)
+            const sorted = sourceData
+                .map(item => ({ label: item.label || item.name || 'Sem origem', value: item.value || 0 }))
+                .sort((a, b) => b.value - a.value);
+            
+            sorted.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'distribution-item';
+                card.innerHTML = `
+                    <span class="distribution-label">${item.label}</span>
+                    <span class="distribution-value">${item.value}</span>
+                `;
+                sourceCardsContainer.appendChild(card);
+            });
+        } else {
+            sourceCardsContainer.innerHTML = '<div class="no-data">Nenhum dado disponível</div>';
         }
     }
     
-    // Renderizar gráfico de responsável
-    if (leadOwnerChart && estatisticas.leads_por_responsavel && typeof estatisticas.leads_por_responsavel === 'object' && Object.keys(estatisticas.leads_por_responsavel).length > 0) {
-        const responsavelData = estatisticas.leads_por_responsavel;
-        const labels = Object.keys(responsavelData);
-        const values = Object.values(responsavelData);
-        
-        // Ordenar por quantidade (maior para menor) e pegar top 10
-        const sorted = labels.map((label, index) => ({ label, value: values[index] }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 10);
-        
-        leadOwnerChart.data.labels = sorted.map(item => item.label);
-        leadOwnerChart.data.datasets[0].data = sorted.map(item => item.value);
-        leadOwnerChart.update();
+    // Renderizar cards de Responsável
+    const ownerCardsContainer = document.getElementById('leadOwnerCards');
+    if (ownerCardsContainer) {
+        ownerCardsContainer.innerHTML = '';
+        if (estatisticas.leads_por_responsavel && typeof estatisticas.leads_por_responsavel === 'object' && Object.keys(estatisticas.leads_por_responsavel).length > 0) {
+            const responsavelData = estatisticas.leads_por_responsavel;
+            const labels = Object.keys(responsavelData);
+            const values = Object.values(responsavelData);
+            
+            // Ordenar por quantidade (maior para menor)
+            const sorted = labels.map((label, index) => ({ label, value: values[index] }))
+                .sort((a, b) => b.value - a.value);
+            
+            sorted.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'distribution-item';
+                card.innerHTML = `
+                    <span class="distribution-label">${item.label}</span>
+                    <span class="distribution-value">${item.value}</span>
+                `;
+                ownerCardsContainer.appendChild(card);
+            });
+        } else {
+            ownerCardsContainer.innerHTML = '<div class="no-data">Nenhum dado disponível</div>';
+        }
     }
 }
 
