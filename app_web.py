@@ -2022,6 +2022,33 @@ def verificar_sults_leads():
                     else:
                         status = 'aberto'
                 
+                # Obter data de criação para filtrar por mês atual
+                data_criacao_str = projeto.get('dtCadastro', '') or projeto.get('dtCriacao', '') or projeto.get('dtInicio', '')
+                data_criacao_obj = None
+                is_mes_atual = False
+                
+                if data_criacao_str:
+                    try:
+                        # Tentar diferentes formatos de data
+                        if isinstance(data_criacao_str, str):
+                            # Formato: YYYY-MM-DD ou DD/MM/YYYY
+                            if '-' in data_criacao_str:
+                                data_criacao_obj = datetime.strptime(data_criacao_str.split('T')[0], '%Y-%m-%d')
+                            elif '/' in data_criacao_str:
+                                data_criacao_obj = datetime.strptime(data_criacao_str.split(' ')[0], '%d/%m/%Y')
+                        elif isinstance(data_criacao_str, (int, float)):
+                            # Timestamp
+                            data_criacao_obj = datetime.fromtimestamp(data_criacao_str / 1000 if data_criacao_str > 1e10 else data_criacao_str)
+                        
+                        if data_criacao_obj:
+                            is_mes_atual = (data_criacao_obj.month == mes_atual and data_criacao_obj.year == ano_atual)
+                    except Exception:
+                        # Se não conseguir parsear, considerar como mês atual por padrão
+                        is_mes_atual = True
+                else:
+                    # Se não tiver data, considerar como mês atual
+                    is_mes_atual = True
+                
                 # Otimizar extração de dados (evitar múltiplos .get() no mesmo objeto)
                 origem_obj = projeto.get('origem', {})
                 origem_nome = origem_obj.get('nome', 'SULTS') if isinstance(origem_obj, dict) else 'SULTS'
@@ -2042,7 +2069,7 @@ def verificar_sults_leads():
                     'status': status,
                     'situacao': situacao_nome,
                     'ativo': True,
-                    'data_criacao': projeto.get('dtCadastro', '') or projeto.get('dtCriacao', ''),
+                    'data_criacao': data_criacao_str,
                     'data_inicio': projeto.get('dtInicio', ''),
                     'data_fim': projeto.get('dtConclusao', '') or projeto.get('dtFim', ''),
                     'cidade': projeto.get('cidade', ''),
@@ -2054,6 +2081,19 @@ def verificar_sults_leads():
                     'tem_mql': tem_mql,
                     'origem_tipo': 'SULTS - Franqueados'
                 }
+                
+                # Adicionar leads ganhos e perdidos às suas listas
+                if status == 'ganho':
+                    leads_ganhos.append(lead_data)
+                elif status == 'perdido':
+                    leads_perdidos.append(lead_data)
+                
+                # Para taxa de conversão: contar TODOS os leads do mês atual (abertos, ganhos, perdidos)
+                if is_mes_atual:
+                    if fase not in leads_por_fase_conversao:
+                        leads_por_fase_conversao[fase] = {'count': 1, 'ordem': fase_ordem}
+                    else:
+                        leads_por_fase_conversao[fase]['count'] += 1
                 
                 # Filtrar apenas leads em aberto para estatísticas, exibição e MQLs
                 if status != 'aberto':
