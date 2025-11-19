@@ -1818,24 +1818,44 @@ def verificar_sults_leads():
         try:
             client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/api/v1", auth_format="token")
             
-            # Buscar negócios via endpoint de expansão (sem filtro de funil na API)
+            # Primeiro tentar buscar negócios de franqueados via endpoint de expansão
             projetos = []
             try:
-                negocios = client.get_negocios_franqueados({'start': 0, 'limit': 1000})
+                negocios = client.get_negocios_franqueados()
                 if negocios:
                     projetos = negocios
-                    print(f"✅ {len(negocios)} negócios encontrados via expansão")
+                    print(f"✅ Encontrados {len(negocios)} negócios de franqueados via expansão")
             except Exception as e:
-                print(f"⚠️ Erro ao buscar via expansão: {e}")
+                print(f"⚠️ Erro ao buscar negócios via expansão: {e}")
             
             # Se não encontrou via expansão, buscar projetos e filtrar
             if not projetos:
                 projetos = client.get_projetos()
-                print(f"📥 {len(projetos)} projetos carregados")
+                
+                # Filtrar apenas projetos de franqueados
+                # Excluir explicitamente lojas e manter apenas franqueados
+                projetos_franqueados = []
+                for projeto in projetos:
+                    etapa = projeto.get('etapa', {})
+                    funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+                    funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                    funil_id = funil.get('id') if isinstance(funil, dict) else None
+                    projeto_nome = projeto.get('nome', '').lower()
+                    
+                    # Excluir lojas explicitamente
+                    if 'loja' in funil_nome or 'loja' in projeto_nome:
+                        continue
+                    
+                    # Incluir apenas projetos do funil "Franqueados" (ID 1) ou que tenham "franqueado" no nome
+                    # Funil ID 1 geralmente é "Franqueados"
+                    if funil_id == 1 or ('franqueado' in funil_nome and 'loja' not in funil_nome) or ('franqueado' in projeto_nome and 'loja' not in projeto_nome):
+                        projetos_franqueados.append(projeto)
+                
+                projetos = projetos_franqueados
+                print(f"✅ Encontrados {len(projetos)} projetos de franqueados após filtro (lojas excluídas)")
             
-            # Filtro otimizado: combinar todas as verificações em um único loop
-            projetos_filtrados = []
-            palavras_excluir = ['loja', 'lojas', 'extrabom']
+            # Filtro final para garantir que não há lojas
+            projetos_filtrados_final = []
             for projeto in projetos:
                 etapa = projeto.get('etapa', {})
                 funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
@@ -1844,19 +1864,19 @@ def verificar_sults_leads():
                 projeto_nome = projeto.get('nome', '').lower()
                 projeto_titulo = projeto.get('titulo', '').lower()
                 
-                # Excluir lojas
+                # Excluir qualquer coisa relacionada a lojas
                 if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
-                       for palavra in palavras_excluir):
+                       for palavra in ['loja', 'lojas', 'extrabom']):
                     continue
                 
-                # Incluir apenas franqueados (funil ID 1 ou nome contém franqueado)
+                # Incluir apenas se for franqueado (funil ID 1 ou nome contém franqueado)
                 if funil_id == 1 or 'franqueado' in funil_nome or 'franqueado' in projeto_nome or 'franqueado' in projeto_titulo:
-                    projetos_filtrados.append(projeto)
+                    projetos_filtrados_final.append(projeto)
             
-            projetos = projetos_filtrados
-            print(f"✅ {len(projetos)} projetos de franqueados após filtro")
+            projetos = projetos_filtrados_final
+            print(f"✅ Após filtro final: {len(projetos)} negócios de franqueados (sem lojas)")
             
-            # Ordem customizada das fases (definida uma vez para otimização)
+            # Ordem customizada das fases (definir uma vez para otimização)
             ordem_fases = {
                 'lead': 1, 'mql': 2, 'conexao': 3, 'conexão': 3,
                 'pre-call agendada': 4, 'pre call agendada': 4,
@@ -1870,6 +1890,9 @@ def verificar_sults_leads():
                 'contrato franquia': 12
             }
             
+            # Palavras a excluir (definir uma vez)
+            palavras_excluir = ['loja', 'lojas', 'extrabom']
+            
             # Transformar projetos em leads para exibição
             leads_abertos = []
             leads_perdidos = []
@@ -1881,11 +1904,18 @@ def verificar_sults_leads():
             leads_por_unidade = {}
             total_mql = 0
             
-            # Processar projetos (já filtrados anteriormente - sem lojas)
             for projeto in projetos:
+                # Verificação final: pular se for loja (otimizado)
                 etapa = projeto.get('etapa', {})
                 funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
                 funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+                projeto_nome = projeto.get('nome', '').lower()
+                projeto_titulo = projeto.get('titulo', '').lower()
+                
+                # Excluir qualquer coisa relacionada a lojas (otimizado)
+                if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
+                       for palavra in palavras_excluir):
+                    continue
                 
                 status = 'aberto'
                 if projeto.get('concluido'):
@@ -1930,7 +1960,7 @@ def verificar_sults_leads():
                 if contato_empresa and isinstance(contato_empresa, dict):
                     unidade_nome = contato_empresa.get('nomeFantasia', 'Sem unidade')
                 
-                # Verificar se tem etiqueta MQL
+                # Verificar se tem etiqueta MQL (otimizado)
                 etiquetas = projeto.get('etiqueta', [])
                 tem_mql = False
                 etiquetas_nomes = []
@@ -1941,9 +1971,7 @@ def verificar_sults_leads():
                             etiqueta_nome = etiqueta.get('nome', '')
                             etiquetas_nomes.append(etiqueta_nome)
                             # Verificar se a etiqueta contém MQL (case insensitive)
-                            # Aceitar variações: MQL, mql, Mql, etc.
-                            etiqueta_upper = etiqueta_nome.upper().strip()
-                            if 'MQL' in etiqueta_upper:
+                            if 'MQL' in etiqueta_nome.upper():
                                 tem_mql = True
                                 break  # Otimização: parar ao encontrar MQL
                 
@@ -2018,7 +2046,7 @@ def verificar_sults_leads():
                 if status != 'aberto':
                     continue
                 
-                # Contadores considerando apenas leads em aberto
+                # Contadores considerando apenas leads em aberto (otimizado)
                 leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
                 # Armazenar fase com informação de ordenação (otimizado)
@@ -2036,15 +2064,11 @@ def verificar_sults_leads():
                 if tem_mql:
                     leads_mql.append(lead_data)
                     total_mql += 1
-                    print(f"📊 MQL em andamento encontrado: ID {projeto.get('id')}, Etiquetas: {etiquetas_nomes}")
             
             total_leads = len(leads_abertos)
             
-            # Log final para debug
-            print(f"\n📊 RESUMO FINAL:")
-            print(f"   Total de projetos processados: {len(projetos)}")
-            print(f"   Leads em aberto: {len(leads_abertos)}")
-            print(f"   MQLs em andamento (apenas status 'aberto'): {total_mql}")
+            # Log final resumido
+            print(f"✅ Processados: {len(projetos)} projetos → {len(leads_abertos)} leads abertos, {total_mql} MQLs")
             
             resultado = {
                 'token_status': token_status,
