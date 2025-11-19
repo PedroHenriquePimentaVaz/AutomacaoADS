@@ -285,6 +285,7 @@ function renderLeadsDashboard() {
     renderLeadsKPIs();
     renderLeadCharts();
     renderLeadDistributions();
+    renderConversionRates();
     renderLeadRecentTable();
     renderLeadsByPhase();
     renderLeadsTable();
@@ -294,10 +295,8 @@ function renderLeadsKPIs() {
     if (!leadsKpisGrid || !filteredLeadsData) return;
     
     const kpis = filteredLeadsData.kpis || {};
-    const estatisticas = filteredLeadsData.estatisticas || {};
     leadsKpisGrid.innerHTML = '';
     
-    // Total de Leads (removida duplicação - usar apenas total_leads)
     if (kpis.total_leads !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -309,7 +308,17 @@ function renderLeadsKPIs() {
         );
     }
     
-    // Leads em Aberto
+    if (kpis.leads_last_30_days !== undefined) {
+        leadsKpisGrid.appendChild(
+            createKPICard(
+                'Entradas (30 dias)',
+                kpis.leads_last_30_days.toLocaleString(),
+                'fas fa-calendar-plus',
+                '#3B82F6'
+            )
+        );
+    }
+    
     if (kpis.leads_active !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -321,7 +330,6 @@ function renderLeadsKPIs() {
         );
     }
     
-    // Leads Convertidos
     if (kpis.leads_won !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -333,31 +341,6 @@ function renderLeadsKPIs() {
         );
     }
     
-    // MQLs (Etiqueta MQL)
-    if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'MQLs (Etiqueta MQL)',
-                kpis.tag_mqls.toLocaleString(),
-                'fas fa-user-check',
-                '#10B981'
-            )
-        );
-    }
-    
-    // Taxa de MQL para Lead
-    if (kpis.mql_to_lead_rate !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Taxa de MQL para Lead',
-                `${kpis.mql_to_lead_rate.toFixed(1)}%`,
-                'fas fa-percentage',
-                '#001c54'
-            )
-        );
-    }
-    
-    // Leads Perdidos
     if (kpis.leads_lost !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
@@ -369,105 +352,24 @@ function renderLeadsKPIs() {
         );
     }
     
-    // Taxa de Conversão (novo)
-    if (kpis.total_leads && kpis.leads_won !== undefined) {
-        const conversionRate = kpis.total_leads > 0 ? (kpis.leads_won / kpis.total_leads) * 100 : 0;
+    if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'Taxa de Conversão',
-                `${conversionRate.toFixed(1)}%`,
-                'fas fa-chart-line',
-                '#8B5CF6'
+                'MQLs (Etiqueta MQL)',
+                kpis.tag_mqls.toLocaleString(),
+                'fas fa-user-check',
+                '#10B981'
             )
         );
     }
     
-    // Top Fase (novo)
-    if (estatisticas.leads_por_fase && Object.keys(estatisticas.leads_por_fase).length > 0) {
-        const topFase = Object.entries(estatisticas.leads_por_fase)
-            .sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
-        if (topFase && topFase[1] > 0) {
-            leadsKpisGrid.appendChild(
-                createKPICard(
-                    'Top Fase',
-                    `${topFase[1]} leads`,
-                    'fas fa-layer-group',
-                    '#2374B9'
-                )
-            );
-        }
-    }
-    
-    // Total de Fases Ativas (novo)
-    if (estatisticas.leads_por_fase) {
-        const totalFases = Object.keys(estatisticas.leads_por_fase).length;
-        if (totalFases > 0) {
-            leadsKpisGrid.appendChild(
-                createKPICard(
-                    'Fases Ativas',
-                    totalFases.toString(),
-                    'fas fa-sitemap',
-                    '#0EA5E9'
-                )
-            );
-        }
-    }
-    
-    // Top Categoria (novo)
-    if (estatisticas.leads_por_categoria && Object.keys(estatisticas.leads_por_categoria).length > 0) {
-        const topCategoria = Object.entries(estatisticas.leads_por_categoria)
-            .sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
-        if (topCategoria && topCategoria[1] > 0) {
-            leadsKpisGrid.appendChild(
-                createKPICard(
-                    'Top Categoria',
-                    `${topCategoria[1]} leads`,
-                    'fas fa-tags',
-                    '#F97316'
-                )
-            );
-        }
-    }
-    
-    // Total de Responsáveis (novo)
-    if (estatisticas.leads_por_responsavel) {
-        const totalResponsaveis = Object.keys(estatisticas.leads_por_responsavel).filter(k => k && k !== 'Sem responsável').length;
-        if (totalResponsaveis > 0) {
-            leadsKpisGrid.appendChild(
-                createKPICard(
-                    'Total de Responsáveis',
-                    totalResponsaveis.toString(),
-                    'fas fa-user-tie',
-                    '#10B981'
-                )
-            );
-        }
-    }
-    
-    // Média de Leads por Responsável (novo)
-    if (estatisticas.leads_por_responsavel && kpis.total_leads) {
-        const responsaveis = Object.keys(estatisticas.leads_por_responsavel).filter(k => k && k !== 'Sem responsável');
-        if (responsaveis.length > 0) {
-            const media = (kpis.total_leads / responsaveis.length).toFixed(1);
-            leadsKpisGrid.appendChild(
-                createKPICard(
-                    'Média por Responsável',
-                    media,
-                    'fas fa-chart-bar',
-                    '#8B5CF6'
-                )
-            );
-        }
-    }
-    
-    // Entradas (30 dias) - se disponível
-    if (kpis.leads_last_30_days !== undefined) {
+    if (kpis.mql_to_lead_rate !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'Entradas (30 dias)',
-                kpis.leads_last_30_days.toLocaleString(),
-                'fas fa-calendar-plus',
-                '#3B82F6'
+                'Taxa de MQL para Lead',
+                `${kpis.mql_to_lead_rate.toFixed(1)}%`,
+                'fas fa-percentage',
+                '#001c54'
             )
         );
     }
