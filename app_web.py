@@ -1878,18 +1878,11 @@ def verificar_sults_leads():
             leads_por_unidade = {}
             total_mql = 0
             
+            # Processar projetos (já filtrados anteriormente - sem lojas)
             for projeto in projetos:
-                # Verificação final: pular se for loja
                 etapa = projeto.get('etapa', {})
                 funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
                 funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
-                projeto_nome = projeto.get('nome', '').lower()
-                projeto_titulo = projeto.get('titulo', '').lower()
-                
-                # Excluir qualquer coisa relacionada a lojas
-                if any(palavra in funil_nome or palavra in projeto_nome or palavra in projeto_titulo 
-                       for palavra in ['loja', 'lojas', 'extrabom']):
-                    continue
                 
                 status = 'aberto'
                 if projeto.get('concluido'):
