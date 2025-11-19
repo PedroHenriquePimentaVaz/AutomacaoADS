@@ -10,7 +10,6 @@ let conversionChart = null;
 let campaignsChart = null;
 let filteredData = null;
 let leadSourceChart = null;
-let leadOwnerChart = null;
 let filteredLeadsData = null;
 
 // DOM Elements
@@ -30,7 +29,6 @@ const leadsTableHead = document.getElementById('leadsTableHead');
 const leadsTableBody = document.getElementById('leadsTableBody');
 const leadsRecentHead = document.getElementById('leadsRecentHead');
 const leadsRecentBody = document.getElementById('leadsRecentBody');
-const leadStatusList = document.getElementById('leadStatusList');
 const leadSourceList = document.getElementById('leadSourceList');
 const leadOwnerList = document.getElementById('leadOwnerList');
 const leadSearchInput = document.getElementById('leadSearchInput');
@@ -393,13 +391,6 @@ function renderLeadCharts() {
     if (!filteredLeadsData) return;
     
     const distributions = filteredLeadsData.distributions || {};
-    const estatisticas = filteredLeadsData.estatisticas || {};
-    
-    // Garantir que estatisticas existe
-    if (!estatisticas) {
-        console.warn('Estatísticas não disponíveis');
-        return;
-    }
     
     // Renderizar apenas gráfico de origem dos leads
     if (leadSourceChart) {
@@ -407,14 +398,6 @@ function renderLeadCharts() {
         leadSourceChart.data.labels = sourceData.map(item => item.label);
         leadSourceChart.data.datasets[0].data = sourceData.map(item => item.value);
         leadSourceChart.update();
-    }
-    
-    // Renderizar gráfico de responsável
-    if (leadOwnerChart) {
-        const ownerData = distributions.owner || [];
-        leadOwnerChart.data.labels = ownerData.map(item => item.label);
-        leadOwnerChart.data.datasets[0].data = ownerData.map(item => item.value);
-        leadOwnerChart.update();
     }
 }
 
@@ -671,7 +654,6 @@ function renderLeadDistributions() {
         }
     }
     
-    populateDistributionList(leadStatusList, distributions.status, 'Leads');
     populateDistributionList(leadSourceList, distributions.source, 'Leads');
     populateDistributionList(leadOwnerList, distributions.owner, 'Leads');
 }
@@ -987,22 +969,8 @@ function filterLeadsTable() {
 }
 
 function exportLeadChart(chartType) {
-    let chart = null;
-    if (chartType === 'source' && leadSourceChart) {
-        chart = leadSourceChart;
-    } else if (chartType === 'owner' && leadOwnerChart) {
-        chart = leadOwnerChart;
-    }
-    
-    if (chart) {
-        const url = chart.toBase64Image();
-        const link = document.createElement('a');
-        link.download = `lead-chart-${chartType}.png`;
-        link.href = url;
-        link.click();
-    } else {
-        alert('Gráfico não disponível para exportação');
-    }
+    console.log('Exporting lead chart:', chartType);
+    alert('Exportação de gráficos de leads estará disponível em breve!');
 }
 
 // Charts rendering
@@ -1303,6 +1271,39 @@ function initializeCharts() {
         }
     });
 
+    const leadStatusCtx = document.getElementById('leadStatusChart');
+    if (leadStatusCtx) {
+        leadStatusChart = new Chart(leadStatusCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [
+                        '#001c54',
+                        '#2374b9',
+                        '#edb125',
+                        '#de5e36',
+                        '#10B981',
+                        '#8B5CF6',
+                        '#6B7280'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
     const leadSourceCtx = document.getElementById('leadSourceChart');
     if (leadSourceCtx) {
         leadSourceChart = new Chart(leadSourceCtx.getContext('2d'), {
@@ -1349,22 +1350,23 @@ function initializeCharts() {
         });
     }
 
-    const leadOwnerCtx = document.getElementById('leadOwnerChart');
-    if (leadOwnerCtx) {
-        leadOwnerChart = new Chart(leadOwnerCtx.getContext('2d'), {
-            type: 'bar',
+    const leadTimelineCtx = document.getElementById('leadTimelineChart');
+    if (leadTimelineCtx) {
+        leadTimelineChart = new Chart(leadTimelineCtx.getContext('2d'), {
+            type: 'line',
             data: {
                 labels: [],
                 datasets: [{
                     label: 'Leads',
                     data: [],
-                    backgroundColor: 'rgba(0, 28, 84, 0.85)',
-                    borderColor: '#001c54',
-                    borderWidth: 1
+                    borderColor: '#edb125',
+                    backgroundColor: 'rgba(237, 177, 37, 0.15)',
+                    borderWidth: 3,
+                    tension: 0.35,
+                    fill: true
                 }]
             },
             options: {
-                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
@@ -1373,7 +1375,7 @@ function initializeCharts() {
                     }
                 },
                 scales: {
-                    x: {
+                    y: {
                         beginAtZero: true,
                         grid: {
                             color: '#E5E7EB'
@@ -1382,7 +1384,7 @@ function initializeCharts() {
                             color: '#6B7280'
                         }
                     },
-                    y: {
+                    x: {
                         grid: {
                             color: '#E5E7EB'
                         },
@@ -2235,18 +2237,6 @@ function displaySultsData(data) {
         },
         source: 'SULTS API',
         timestamp: new Date().toISOString()
-    };
-    
-    // Adicionar distribuições para os gráficos
-    currentLeadsData.distributions = {
-        source: Object.entries(sultsLeads.estatisticas.leads_por_unidade || {}).map(([label, value]) => ({
-            label: label || 'Sem origem',
-            value: value || 0
-        })).sort((a, b) => b.value - a.value).slice(0, 10),
-        owner: Object.entries(sultsLeads.estatisticas.leads_por_responsavel || {}).map(([label, value]) => ({
-            label: label || 'Sem responsável',
-            value: value || 0
-        })).sort((a, b) => b.value - a.value).slice(0, 10)
     };
     
     filteredLeadsData = currentLeadsData;
