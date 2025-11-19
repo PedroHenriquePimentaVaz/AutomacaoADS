@@ -2232,7 +2232,7 @@ function displaySultsData(data) {
             email: lead.email || '',
             telefone: lead.telefone || lead.phone || '',
             status: lead.status || 'Sem status',
-            origem: lead.origem || lead.source || 'SULTS',
+            origem: lead.origem || lead.origem_tipo || lead.source || 'SULTS',
             data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
             responsavel: lead.responsavel || '',
             unidade: lead.unidade || '',
