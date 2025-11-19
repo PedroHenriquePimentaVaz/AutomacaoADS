@@ -464,25 +464,17 @@ function renderLeadsByPhaseChart(data) {
         window.leadsByPhaseChart.destroy();
     }
     
-    // Ordenar fases pela ordem do funil (se disponível)
+    // Ordenar por ordem das etapas
     const estatisticas = filteredLeadsData?.estatisticas || {};
-    const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
+    const ordem = estatisticas.leads_por_fase_ordem || {};
+    const sorted = Object.entries(data).sort((a, b) => {
+        const ordemA = ordem[a[0]] || 9999;
+        const ordemB = ordem[b[0]] || 9999;
+        return ordemA - ordemB;
+    });
     
-    let sortedEntries;
-    if (Object.keys(fasesComOrdem).length > 0) {
-        // Usar ordem do funil
-        sortedEntries = Object.entries(data).sort((a, b) => {
-            const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
-            const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
-            return ordemA - ordemB;
-        });
-    } else {
-        // Fallback: ordenar por quantidade
-        sortedEntries = Object.entries(data).sort((a, b) => b[1] - a[1]);
-    }
-    
-    const labels = sortedEntries.map(([fase]) => fase);
-    const values = sortedEntries.map(([, count]) => count);
+    const labels = sorted.map(([fase]) => fase);
+    const values = sorted.map(([, count]) => count);
     
     window.leadsByPhaseChart = new Chart(ctx, {
         type: 'bar',
@@ -583,20 +575,12 @@ function renderLeadDistributions() {
         const faseList = document.getElementById('leadFaseList');
         if (faseList) {
             faseList.innerHTML = '';
-            
-            // Ordenar pela ordem do funil se disponível
-            const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
-            let sorted;
-            if (Object.keys(fasesComOrdem).length > 0) {
-                sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => {
-                    const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
-                    const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
-                    return ordemA - ordemB;
-                });
-            } else {
-                sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => b[1] - a[1]);
-            }
-            
+            const ordem = estatisticas.leads_por_fase_ordem || {};
+            const sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => {
+                const ordemA = ordem[a[0]] || 9999;
+                const ordemB = ordem[b[0]] || 9999;
+                return ordemA - ordemB;
+            });
             sorted.forEach(([fase, count]) => {
                 const item = document.createElement('div');
                 item.className = 'distribution-item';
@@ -778,22 +762,14 @@ function renderLeadsByPhase() {
     
     container.innerHTML = '';
     
-    // Ordenar fases pela ordem do funil (se disponível)
+    // Ordenar fases pela ordem correta das etapas
     const estatisticas = filteredLeadsData?.estatisticas || {};
-    const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
-    
-    let sortedPhases;
-    if (Object.keys(fasesComOrdem).length > 0) {
-        // Usar ordem do funil
-        sortedPhases = Object.entries(leadsByPhase).sort((a, b) => {
-            const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
-            const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
-            return ordemA - ordemB;
-        });
-    } else {
-        // Fallback: ordenar por quantidade de leads
-        sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
-    }
+    const ordem = estatisticas.leads_por_fase_ordem || {};
+    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => {
+        const ordemA = ordem[a[0]] || 9999;
+        const ordemB = ordem[b[0]] || 9999;
+        return ordemA - ordemB;
+    });
     
     sortedPhases.forEach(([fase, faseLeads]) => {
         const phaseCard = document.createElement('div');
@@ -2147,7 +2123,7 @@ function displaySultsData(data) {
         },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
-            leads_por_fase_com_ordem: data.estatisticas?.leads_por_fase_com_ordem || {},
+            leads_por_fase_ordem: sultsLeads.estatisticas.leads_por_fase_ordem || {},
             leads_por_categoria: sultsLeads.estatisticas.leads_por_categoria || {},
             leads_por_responsavel: sultsLeads.estatisticas.leads_por_responsavel || {},
             leads_por_unidade: sultsLeads.estatisticas.leads_por_unidade || {}

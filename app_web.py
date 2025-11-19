@@ -1940,8 +1940,7 @@ def verificar_sults_leads():
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
                 
-                # Armazenar ID da etapa para ordenação posterior
-                # Usar um ID alto para fases sem etapa definida (vão para o final)
+                # Armazenar ID da etapa para ordenação (usar ID alto para fases sem etapa definida)
                 fase_ordem = etapa_id if etapa_id is not None else 9999
                 
                 # Contar por responsável
@@ -2102,8 +2101,8 @@ def verificar_sults_leads():
                     'leads_mql': total_mql
                 },
                 'estatisticas': {
-                    'leads_por_fase': leads_por_fase_simples,
-                    'leads_por_fase_com_ordem': leads_por_fase,  # Manter estrutura completa para ordenação
+                    'leads_por_fase': {k: v['count'] if isinstance(v, dict) else v for k, v in leads_por_fase.items()},
+                    'leads_por_fase_ordem': {k: v['ordem'] if isinstance(v, dict) else 9999 for k, v in leads_por_fase.items()},
                     'leads_por_categoria': leads_por_categoria,
                     'leads_por_responsavel': leads_por_responsavel,
                     'leads_por_unidade': leads_por_unidade
