@@ -1912,7 +1912,6 @@ def verificar_sults_leads():
                 # Extrair categoria
                 categoria = projeto.get('categoria', {})
                 categoria_nome = categoria.get('nome', 'Sem categoria') if isinstance(categoria, dict) else 'Sem categoria'
-                leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
                 
                 # Fase: usar etapa se disponível, senão usar categoria + status
                 # Garantir que não inclui lojas no nome da fase
@@ -1924,19 +1923,15 @@ def verificar_sults_leads():
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
                 
-                leads_por_fase[fase] = leads_por_fase.get(fase, 0) + 1
-                
                 # Contar por responsável
                 responsavel = projeto.get('responsavel', {})
                 responsavel_nome = responsavel.get('nome', 'Sem responsável') if isinstance(responsavel, dict) else 'Sem responsável'
-                leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
                 
                 # Contar por unidade (usar contatoEmpresa se disponível)
                 contato_empresa = projeto.get('contatoEmpresa', {})
                 unidade_nome = 'Sem unidade'
                 if contato_empresa and isinstance(contato_empresa, dict):
                     unidade_nome = contato_empresa.get('nomeFantasia', 'Sem unidade')
-                leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
                 
                 # Verificar se tem etiqueta MQL
                 etiquetas = projeto.get('etiqueta', [])
@@ -1992,6 +1987,9 @@ def verificar_sults_leads():
                     else:
                         status = 'aberto'
                 
+                # Extrair ID da etapa para ordenação
+                etapa_id = etapa.get('id') if isinstance(etapa, dict) else None
+                
                 lead_data = {
                     'id': projeto.get('id'),
                     'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
@@ -2002,6 +2000,7 @@ def verificar_sults_leads():
                     'categoria': categoria_nome,
                     'fase': fase,
                     'etapa': etapa_nome,
+                    'etapa_id': etapa_id,  # ID da etapa para ordenação
                     'funil': funil_nome,
                     'status': status,
                     'situacao': situacao_nome,
@@ -2019,19 +2018,23 @@ def verificar_sults_leads():
                     'origem_tipo': 'SULTS - Franqueados'
                 }
                 
-                if status == 'aberto':
-                    leads_abertos.append(lead_data)
-                elif status == 'ganho':
-                    leads_ganhos.append(lead_data)
-                else:
-                    leads_perdidos.append(lead_data)
+                if status != 'aberto':
+                    continue
+                
+                # Contadores considerando apenas leads em aberto
+                leads_por_categoria[categoria_nome] = leads_por_categoria.get(categoria_nome, 0) + 1
+                leads_por_fase[fase] = leads_por_fase.get(fase, 0) + 1
+                leads_por_responsavel[responsavel_nome] = leads_por_responsavel.get(responsavel_nome, 0) + 1
+                leads_por_unidade[unidade_nome] = leads_por_unidade.get(unidade_nome, 0) + 1
+                
+                leads_abertos.append(lead_data)
                 
                 # Adicionar aos MQLs se tiver etiqueta MQL
                 if tem_mql:
                     leads_mql.append(lead_data)
                     total_mql += 1
             
-            total_leads = len(projetos)
+            total_leads = len(leads_abertos)
             
             resultado = {
                 'token_status': token_status,
@@ -2060,7 +2063,7 @@ def verificar_sults_leads():
                 },
                 'resumo': {
                     'total_leads': total_leads,
-                    'total_projetos': len(projetos),
+                    'total_projetos': len(leads_abertos),
                     'leads_abertos': len(leads_abertos),
                     'leads_perdidos': len(leads_perdidos),
                     'leads_ganhos': len(leads_ganhos),

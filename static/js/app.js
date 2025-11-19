@@ -736,20 +736,35 @@ function renderLeadsByPhase() {
     
     const leads = filteredLeadsData.leads || [];
     
-    // Organizar leads por fase
+    // Organizar leads por fase e manter ordem de aparição
     const leadsByPhase = {};
+    const phaseOrder = []; // Manter ordem de primeira aparição
+    const phaseEtapaIds = {}; // Mapear fase -> etapa_id para ordenação
+    
     leads.forEach(lead => {
         const fase = lead.fase || 'Sem fase';
         if (!leadsByPhase[fase]) {
             leadsByPhase[fase] = [];
+            phaseOrder.push(fase);
+            // Usar etapa_id se disponível, senão usar um número alto para manter no final
+            phaseEtapaIds[fase] = lead.etapa_id || 999999;
         }
         leadsByPhase[fase].push(lead);
     });
     
     container.innerHTML = '';
     
-    // Ordenar fases por quantidade de leads
-    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
+    // Ordenar fases pela ordem do projeto (etapa_id), mantendo ordem de aparição como fallback
+    const sortedPhases = phaseOrder.map(fase => [fase, leadsByPhase[fase]]).sort((a, b) => {
+        const etapaIdA = phaseEtapaIds[a[0]] || 999999;
+        const etapaIdB = phaseEtapaIds[b[0]] || 999999;
+        // Ordenar por etapa_id (ordem do projeto)
+        if (etapaIdA !== etapaIdB) {
+            return etapaIdA - etapaIdB;
+        }
+        // Se etapa_id for igual, manter ordem de aparição
+        return phaseOrder.indexOf(a[0]) - phaseOrder.indexOf(b[0]);
+    });
     
     sortedPhases.forEach(([fase, faseLeads]) => {
         const phaseCard = document.createElement('div');
