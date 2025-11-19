@@ -1818,18 +1818,20 @@ def verificar_sults_leads():
         try:
             client = SultsAPIClient(token=token, base_url="https://api.sults.com.br/api/v1", auth_format="token")
             
-            # Buscar negócios de franqueados via endpoint de expansão (mais rápido)
+            # Buscar negócios via endpoint de expansão (sem filtro de funil na API)
             projetos = []
             try:
-                negocios = client.get_negocios_franqueados({'funil': 1, 'start': 0, 'limit': 1000})
+                negocios = client.get_negocios_franqueados({'start': 0, 'limit': 1000})
                 if negocios:
                     projetos = negocios
+                    print(f"✅ {len(negocios)} negócios encontrados via expansão")
             except Exception as e:
-                print(f"⚠️ Erro: {e}")
+                print(f"⚠️ Erro ao buscar via expansão: {e}")
             
             # Se não encontrou via expansão, buscar projetos e filtrar
             if not projetos:
                 projetos = client.get_projetos()
+                print(f"📥 {len(projetos)} projetos carregados")
             
             # Filtro otimizado: combinar todas as verificações em um único loop
             projetos_filtrados = []
@@ -1847,11 +1849,12 @@ def verificar_sults_leads():
                        for palavra in palavras_excluir):
                     continue
                 
-                # Incluir apenas franqueados
+                # Incluir apenas franqueados (funil ID 1 ou nome contém franqueado)
                 if funil_id == 1 or 'franqueado' in funil_nome or 'franqueado' in projeto_nome or 'franqueado' in projeto_titulo:
                     projetos_filtrados.append(projeto)
             
             projetos = projetos_filtrados
+            print(f"✅ {len(projetos)} projetos de franqueados após filtro")
             
             # Ordem customizada das fases (definida uma vez para otimização)
             ordem_fases = {
