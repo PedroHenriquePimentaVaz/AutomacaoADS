@@ -1965,19 +1965,16 @@ def verificar_sults_leads():
                     'contrato franquia': 12
                 }
                 
-                # Determinar ordem da fase (case insensitive)
+                # Determinar ordem da fase (case insensitive) - otimizado
                 fase_lower = fase.lower().strip()
-                fase_ordem = 9999  # Ordem padrão para fases não mapeadas
+                fase_ordem = etapa_id if etapa_id is not None else 9999
                 
-                # Procurar correspondência exata ou parcial
-                for key, ordem in ordem_fases.items():
-                    if key in fase_lower:
-                        fase_ordem = ordem
-                        break
-                
-                # Se não encontrou correspondência, usar ID da etapa como fallback
-                if fase_ordem == 9999 and etapa_id is not None:
-                    fase_ordem = etapa_id
+                # Procurar correspondência apenas se não tiver etapa_id
+                if fase_ordem == 9999:
+                    for key, ordem in ordem_fases.items():
+                        if key in fase_lower:
+                            fase_ordem = ordem
+                            break
                 
                 # Contar por responsável
                 responsavel = projeto.get('responsavel', {})
@@ -2004,6 +2001,7 @@ def verificar_sults_leads():
                             etiqueta_upper = etiqueta_nome.upper().strip()
                             if 'MQL' in etiqueta_upper:
                                 tem_mql = True
+                                break  # Otimização: parar ao encontrar MQL
                 
                 # Extrair informações de contato (para negócios de franqueados)
                 contato_pessoa = projeto.get('contatoPessoa', [])

@@ -163,7 +163,7 @@ class SultsAPIClient:
                 headers=self.headers,
                 params=params,
                 json=data,
-                timeout=5  # Reduzir timeout para 5 segundos
+                timeout=10  # Timeout de 10 segundos
             )
             response.raise_for_status()
             
@@ -331,26 +331,6 @@ class SultsAPIClient:
             return response if isinstance(response, list) else []
         except Exception as e:
             print(f"Erro ao buscar negócios de franqueados: {e}")
-            return []
-    
-    def get_negocio_timeline(self, negocio_id: int) -> List[Dict]:
-        """Busca timeline de um negócio específico"""
-        endpoint = f"/expansao/negocio/{negocio_id}/timeline"
-        
-        # Ajustar headers conforme documentação
-        headers = self.headers.copy()
-        headers['Content-Type'] = 'application/json;charset=UTF-8'
-        
-        try:
-            response = self._make_request('GET', endpoint)
-            
-            # A API retorna {'data': [...]}
-            if isinstance(response, dict) and 'data' in response:
-                return response['data']
-            
-            return response if isinstance(response, list) else []
-        except Exception as e:
-            print(f"Erro ao buscar timeline do negócio {negocio_id}: {e}")
             return []
     
     def get_leads_status(self, date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
