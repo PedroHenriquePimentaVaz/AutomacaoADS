@@ -778,8 +778,22 @@ function renderLeadsByPhase() {
     
     container.innerHTML = '';
     
-    // Ordenar fases por quantidade de leads
-    const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
+    // Ordenar fases pela ordem do funil (se disponível)
+    const estatisticas = filteredLeadsData?.estatisticas || {};
+    const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
+    
+    let sortedPhases;
+    if (Object.keys(fasesComOrdem).length > 0) {
+        // Usar ordem do funil
+        sortedPhases = Object.entries(leadsByPhase).sort((a, b) => {
+            const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
+            const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
+            return ordemA - ordemB;
+        });
+    } else {
+        // Fallback: ordenar por quantidade de leads
+        sortedPhases = Object.entries(leadsByPhase).sort((a, b) => b[1].length - a[1].length);
+    }
     
     sortedPhases.forEach(([fase, faseLeads]) => {
         const phaseCard = document.createElement('div');
