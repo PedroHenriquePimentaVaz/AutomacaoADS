@@ -9,9 +9,8 @@ let costsChart = null;
 let conversionChart = null;
 let campaignsChart = null;
 let filteredData = null;
-let leadStatusChart = null;
 let leadSourceChart = null;
-let leadTimelineChart = null;
+let leadOwnerChart = null;
 let filteredLeadsData = null;
 
 // DOM Elements
@@ -402,24 +401,7 @@ function renderLeadCharts() {
         return;
     }
     
-    // Renderizar gráfico de leads por fase
-    if (estatisticas.leads_por_fase && typeof estatisticas.leads_por_fase === 'object' && Object.keys(estatisticas.leads_por_fase).length > 0) {
-        renderLeadsByPhaseChart(estatisticas.leads_por_fase);
-    }
-    
-    // Renderizar gráfico de leads por categoria
-    if (estatisticas.leads_por_categoria && typeof estatisticas.leads_por_categoria === 'object' && Object.keys(estatisticas.leads_por_categoria).length > 0) {
-        renderLeadsByCategoryChart(estatisticas.leads_por_categoria);
-    }
-    
-    
-    if (leadStatusChart) {
-        const statusData = distributions.status || [];
-        leadStatusChart.data.labels = statusData.map(item => item.label);
-        leadStatusChart.data.datasets[0].data = statusData.map(item => item.value);
-        leadStatusChart.update();
-    }
-    
+    // Renderizar apenas gráfico de origem dos leads
     if (leadSourceChart) {
         const sourceData = distributions.source || [];
         leadSourceChart.data.labels = sourceData.map(item => item.label);
@@ -427,11 +409,12 @@ function renderLeadCharts() {
         leadSourceChart.update();
     }
     
-    if (leadTimelineChart) {
-        const timelineData = filteredLeadsData.timeline || [];
-        leadTimelineChart.data.labels = timelineData.map(item => item.period);
-        leadTimelineChart.data.datasets[0].data = timelineData.map(item => item.leads);
-        leadTimelineChart.update();
+    // Renderizar gráfico de responsável
+    if (leadOwnerChart) {
+        const ownerData = distributions.owner || [];
+        leadOwnerChart.data.labels = ownerData.map(item => item.label);
+        leadOwnerChart.data.datasets[0].data = ownerData.map(item => item.value);
+        leadOwnerChart.update();
     }
 }
 
@@ -1004,8 +987,22 @@ function filterLeadsTable() {
 }
 
 function exportLeadChart(chartType) {
-    console.log('Exporting lead chart:', chartType);
-    alert('Exportação de gráficos de leads estará disponível em breve!');
+    let chart = null;
+    if (chartType === 'source' && leadSourceChart) {
+        chart = leadSourceChart;
+    } else if (chartType === 'owner' && leadOwnerChart) {
+        chart = leadOwnerChart;
+    }
+    
+    if (chart) {
+        const url = chart.toBase64Image();
+        const link = document.createElement('a');
+        link.download = `lead-chart-${chartType}.png`;
+        link.href = url;
+        link.click();
+    } else {
+        alert('Gráfico não disponível para exportação');
+    }
 }
 
 // Charts rendering
@@ -1306,9 +1303,7 @@ function initializeCharts() {
         }
     });
 
-    const leadStatusCtx = document.getElementById('leadStatusChart');
-    if (leadStatusCtx) {
-        leadStatusChart = new Chart(leadStatusCtx.getContext('2d'), {
+    // Removido: gráfico de status dos leads
             type: 'doughnut',
             data: {
                 labels: [],
