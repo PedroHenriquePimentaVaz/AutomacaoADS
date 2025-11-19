@@ -2256,6 +2256,30 @@ function displaySultsData(data) {
             tag_mqls: totalMQL,
             mql_to_lead_rate: mqlToLeadRate
         },
+        distributions: {
+            source: (() => {
+                const origemCount = {};
+                uniqueLeads.forEach(lead => {
+                    const origem = lead.origem || lead.origem_tipo || 'SULTS';
+                    origemCount[origem] = (origemCount[origem] || 0) + 1;
+                });
+                return Object.entries(origemCount)
+                    .map(([label, value]) => ({ label, value }))
+                    .sort((a, b) => b.value - a.value);
+            })(),
+            owner: (() => {
+                const ownerCount = {};
+                uniqueLeads.forEach(lead => {
+                    const owner = lead.responsavel || 'Sem responsável';
+                    if (owner && owner !== 'Sem responsável') {
+                        ownerCount[owner] = (ownerCount[owner] || 0) + 1;
+                    }
+                });
+                return Object.entries(ownerCount)
+                    .map(([label, value]) => ({ label, value }))
+                    .sort((a, b) => b.value - a.value);
+            })()
+        },
         estatisticas: {
             leads_por_fase: sultsLeads.estatisticas.leads_por_fase || {},
             leads_por_fase_ordem: sultsLeads.estatisticas.leads_por_fase_ordem || {},
