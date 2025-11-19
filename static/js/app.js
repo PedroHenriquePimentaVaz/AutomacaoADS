@@ -2099,6 +2099,7 @@ function displaySultsData(data) {
             fase: lead.fase || '',
             categoria: lead.categoria || '',
             etapa: lead.etapa || '',
+            etapa_id: lead.etapa_id || null,
             funil: lead.funil || ''
         })),
         status_distribution: {
