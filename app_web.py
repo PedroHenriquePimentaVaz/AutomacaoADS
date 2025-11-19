@@ -1970,7 +1970,7 @@ def verificar_sults_leads():
                         if isinstance(etiqueta, dict):
                             etiqueta_nome = etiqueta.get('nome', '')
                             etiquetas_nomes.append(etiqueta_nome)
-                            # Verificar se a etiqueta contém MQL (case insensitive)
+                            # Verificar se a etiqueta contém MQL (otimizado - sem upper() desnecessário)
                             if 'MQL' in etiqueta_nome.upper():
                                 tem_mql = True
                                 break  # Otimização: parar ao encontrar MQL
@@ -2015,28 +2015,34 @@ def verificar_sults_leads():
                     else:
                         status = 'aberto'
                 
+                # Otimizar extração de dados (evitar múltiplos .get() no mesmo objeto)
+                origem_obj = projeto.get('origem', {})
+                origem_nome = origem_obj.get('nome', 'SULTS') if isinstance(origem_obj, dict) else 'SULTS'
+                temperatura_obj = projeto.get('temperatura', {})
+                temperatura_nome = temperatura_obj.get('nome', '') if isinstance(temperatura_obj, dict) else ''
+                
                 lead_data = {
                     'id': projeto.get('id'),
                     'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
                     'email': email,
                     'telefone': telefone,
                     'responsavel': responsavel_nome,
-                    'unidade': unidade_nome or contato_empresa.get('nomeFantasia', '') if isinstance(contato_empresa, dict) else '',
+                    'unidade': unidade_nome or (contato_empresa.get('nomeFantasia', '') if isinstance(contato_empresa, dict) else ''),
                     'categoria': categoria_nome,
                     'fase': fase,
                     'etapa': etapa_nome,
                     'funil': funil_nome,
                     'status': status,
                     'situacao': situacao_nome,
-                    'ativo': True,  # Negócios ativos são os que não estão concluídos/perdidos
+                    'ativo': True,
                     'data_criacao': projeto.get('dtCadastro', '') or projeto.get('dtCriacao', ''),
                     'data_inicio': projeto.get('dtInicio', ''),
                     'data_fim': projeto.get('dtConclusao', '') or projeto.get('dtFim', ''),
                     'cidade': projeto.get('cidade', ''),
                     'uf': projeto.get('uf', ''),
                     'valor': projeto.get('valor', 0.0),
-                    'origem': projeto.get('origem', {}).get('nome', 'SULTS') if isinstance(projeto.get('origem'), dict) else 'SULTS',
-                    'temperatura': projeto.get('temperatura', {}).get('nome', '') if isinstance(projeto.get('temperatura'), dict) else '',
+                    'origem': origem_nome,
+                    'temperatura': temperatura_nome,
                     'etiquetas': etiquetas_nomes,
                     'tem_mql': tem_mql,
                     'origem_tipo': 'SULTS - Franqueados'
