@@ -464,12 +464,59 @@ function renderLeadsByPhaseChart(data) {
         window.leadsByPhaseChart.destroy();
     }
     
-    // Ordenar por ordem das etapas
+    // Ordem customizada das fases
+    const ordemFases = {
+        'lead': 1,
+        'mql': 2,
+        'conexao': 3,
+        'conexão': 3,
+        'pre-call agendada': 4,
+        'pre call agendada': 4,
+        'pre-call realizada': 5,
+        'pre call realizada': 5,
+        'apresentação modelo agendada': 6,
+        'apresentacao modelo agendada': 6,
+        'apresentação modelo realizada': 7,
+        'apresentacao modelo realizada': 7,
+        'apresentação financeira agendada': 8,
+        'apresentacao financeira agendada': 8,
+        'reunião financeira realizada': 9,
+        'reuniao financeira realizada': 9,
+        'reunião fundador agendada': 10,
+        'reuniao fundador agendada': 10,
+        'aguardando decisão': 11,
+        'aguardando decisao': 11,
+        'contrato franquia': 12
+    };
+    
     const estatisticas = filteredLeadsData?.estatisticas || {};
     const ordem = estatisticas.leads_por_fase_ordem || {};
     const sorted = Object.entries(data).sort((a, b) => {
-        const ordemA = ordem[a[0]] || 9999;
-        const ordemB = ordem[b[0]] || 9999;
+        const faseA = a[0].toLowerCase().trim();
+        const faseB = b[0].toLowerCase().trim();
+        
+        let ordemA = ordem[faseA] || 9999;
+        let ordemB = ordem[faseB] || 9999;
+        
+        // Se não encontrou na ordem do backend, procurar no mapeamento local
+        if (ordemA === 9999) {
+            for (const [key, val] of Object.entries(ordemFases)) {
+                if (faseA.includes(key)) {
+                    ordemA = val;
+                    break;
+                }
+            }
+        }
+        
+        if (ordemB === 9999) {
+            for (const [key, val] of Object.entries(ordemFases)) {
+                if (faseB.includes(key)) {
+                    ordemB = val;
+                    break;
+                }
+            }
+        }
+        
         return ordemA - ordemB;
     });
     
@@ -575,10 +622,58 @@ function renderLeadDistributions() {
         const faseList = document.getElementById('leadFaseList');
         if (faseList) {
             faseList.innerHTML = '';
+            // Ordem customizada das fases
+            const ordemFases = {
+                'lead': 1,
+                'mql': 2,
+                'conexao': 3,
+                'conexão': 3,
+                'pre-call agendada': 4,
+                'pre call agendada': 4,
+                'pre-call realizada': 5,
+                'pre call realizada': 5,
+                'apresentação modelo agendada': 6,
+                'apresentacao modelo agendada': 6,
+                'apresentação modelo realizada': 7,
+                'apresentacao modelo realizada': 7,
+                'apresentação financeira agendada': 8,
+                'apresentacao financeira agendada': 8,
+                'reunião financeira realizada': 9,
+                'reuniao financeira realizada': 9,
+                'reunião fundador agendada': 10,
+                'reuniao fundador agendada': 10,
+                'aguardando decisão': 11,
+                'aguardando decisao': 11,
+                'contrato franquia': 12
+            };
+            
             const ordem = estatisticas.leads_por_fase_ordem || {};
             const sorted = Object.entries(estatisticas.leads_por_fase).sort((a, b) => {
-                const ordemA = ordem[a[0]] || 9999;
-                const ordemB = ordem[b[0]] || 9999;
+                const faseA = a[0].toLowerCase().trim();
+                const faseB = b[0].toLowerCase().trim();
+                
+                let ordemA = ordem[faseA] || 9999;
+                let ordemB = ordem[faseB] || 9999;
+                
+                // Se não encontrou na ordem do backend, procurar no mapeamento local
+                if (ordemA === 9999) {
+                    for (const [key, val] of Object.entries(ordemFases)) {
+                        if (faseA.includes(key)) {
+                            ordemA = val;
+                            break;
+                        }
+                    }
+                }
+                
+                if (ordemB === 9999) {
+                    for (const [key, val] of Object.entries(ordemFases)) {
+                        if (faseB.includes(key)) {
+                            ordemB = val;
+                            break;
+                        }
+                    }
+                }
+                
                 return ordemA - ordemB;
             });
             sorted.forEach(([fase, count]) => {
@@ -762,12 +857,59 @@ function renderLeadsByPhase() {
     
     container.innerHTML = '';
     
-    // Ordenar fases pela ordem correta das etapas
+    // Ordem customizada das fases
+    const ordemFases = {
+        'lead': 1,
+        'mql': 2,
+        'conexao': 3,
+        'conexão': 3,
+        'pre-call agendada': 4,
+        'pre call agendada': 4,
+        'pre-call realizada': 5,
+        'pre call realizada': 5,
+        'apresentação modelo agendada': 6,
+        'apresentacao modelo agendada': 6,
+        'apresentação modelo realizada': 7,
+        'apresentacao modelo realizada': 7,
+        'apresentação financeira agendada': 8,
+        'apresentacao financeira agendada': 8,
+        'reunião financeira realizada': 9,
+        'reuniao financeira realizada': 9,
+        'reunião fundador agendada': 10,
+        'reuniao fundador agendada': 10,
+        'aguardando decisão': 11,
+        'aguardando decisao': 11,
+        'contrato franquia': 12
+    };
+    
     const estatisticas = filteredLeadsData?.estatisticas || {};
     const ordem = estatisticas.leads_por_fase_ordem || {};
     const sortedPhases = Object.entries(leadsByPhase).sort((a, b) => {
-        const ordemA = ordem[a[0]] || 9999;
-        const ordemB = ordem[b[0]] || 9999;
+        const faseA = a[0].toLowerCase().trim();
+        const faseB = b[0].toLowerCase().trim();
+        
+        let ordemA = ordem[faseA] || 9999;
+        let ordemB = ordem[faseB] || 9999;
+        
+        // Se não encontrou na ordem do backend, procurar no mapeamento local
+        if (ordemA === 9999) {
+            for (const [key, val] of Object.entries(ordemFases)) {
+                if (faseA.includes(key)) {
+                    ordemA = val;
+                    break;
+                }
+            }
+        }
+        
+        if (ordemB === 9999) {
+            for (const [key, val] of Object.entries(ordemFases)) {
+                if (faseB.includes(key)) {
+                    ordemB = val;
+                    break;
+                }
+            }
+        }
+        
         return ordemA - ordemB;
     });
     

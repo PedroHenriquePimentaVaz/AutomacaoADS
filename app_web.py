@@ -1940,8 +1940,44 @@ def verificar_sults_leads():
                 else:
                     fase = f"{categoria_nome} - {status.title()}"
                 
-                # Armazenar ID da etapa para ordenação (usar ID alto para fases sem etapa definida)
-                fase_ordem = etapa_id if etapa_id is not None else 9999
+                # Ordem customizada das fases
+                ordem_fases = {
+                    'lead': 1,
+                    'mql': 2,
+                    'conexao': 3,
+                    'conexão': 3,
+                    'pre-call agendada': 4,
+                    'pre call agendada': 4,
+                    'pre-call realizada': 5,
+                    'pre call realizada': 5,
+                    'apresentação modelo agendada': 6,
+                    'apresentacao modelo agendada': 6,
+                    'apresentação modelo realizada': 7,
+                    'apresentacao modelo realizada': 7,
+                    'apresentação financeira agendada': 8,
+                    'apresentacao financeira agendada': 8,
+                    'reunião financeira realizada': 9,
+                    'reuniao financeira realizada': 9,
+                    'reunião fundador agendada': 10,
+                    'reuniao fundador agendada': 10,
+                    'aguardando decisão': 11,
+                    'aguardando decisao': 11,
+                    'contrato franquia': 12
+                }
+                
+                # Determinar ordem da fase (case insensitive)
+                fase_lower = fase.lower().strip()
+                fase_ordem = 9999  # Ordem padrão para fases não mapeadas
+                
+                # Procurar correspondência exata ou parcial
+                for key, ordem in ordem_fases.items():
+                    if key in fase_lower:
+                        fase_ordem = ordem
+                        break
+                
+                # Se não encontrou correspondência, usar ID da etapa como fallback
+                if fase_ordem == 9999 and etapa_id is not None:
+                    fase_ordem = etapa_id
                 
                 # Contar por responsável
                 responsavel = projeto.get('responsavel', {})
