@@ -390,7 +390,7 @@ function renderLeadsKPIs() {
             leadsKpisGrid.appendChild(
                 createKPICard(
                     'Top Fase',
-                    `${topFase[0].substring(0, 20)}${topFase[0].length > 20 ? '...' : ''}`,
+                    `${topFase[1]} leads`,
                     'fas fa-layer-group',
                     '#2374B9'
                 )
@@ -421,7 +421,7 @@ function renderLeadsKPIs() {
             leadsKpisGrid.appendChild(
                 createKPICard(
                     'Top Categoria',
-                    `${topCategoria[0].substring(0, 20)}${topCategoria[0].length > 20 ? '...' : ''}`,
+                    `${topCategoria[1]} leads`,
                     'fas fa-tags',
                     '#F97316'
                 )
