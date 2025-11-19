@@ -1300,25 +1300,28 @@ function initializeCharts() {
         }
     });
 
-    const leadStatusCtx = document.getElementById('leadStatusChart');
-    if (leadStatusCtx) {
-        leadStatusChart = new Chart(leadStatusCtx.getContext('2d'), {
+    // Gráfico de Origem dos Leads
+    const leadSourceCtx = document.getElementById('leadSourceChart');
+    if (leadSourceCtx) {
+        leadSourceChart = new Chart(leadSourceCtx.getContext('2d'), {
             type: 'doughnut',
             data: {
                 labels: [],
                 datasets: [{
+                    label: 'Leads',
                     data: [],
                     backgroundColor: [
                         '#001c54',
-                        '#2374b9',
-                        '#edb125',
-                        '#de5e36',
+                        '#2374B9',
+                        '#0EA5E9',
                         '#10B981',
+                        '#F97316',
                         '#8B5CF6',
-                        '#6B7280'
+                        '#EF4444',
+                        '#EDB125'
                     ],
                     borderWidth: 2,
-                    borderColor: '#ffffff'
+                    borderColor: '#fff'
                 }]
             },
             options: {
@@ -1326,7 +1329,22 @@ function initializeCharts() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'bottom'
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
                     }
                 }
             }
