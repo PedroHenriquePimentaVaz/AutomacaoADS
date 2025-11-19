@@ -705,27 +705,6 @@ function renderLeadDistributions() {
     }
 }
 
-function populateDistributionList(container, items, label) {
-    if (!container) return;
-    
-    if (!items || items.length === 0) {
-        container.innerHTML = '<p class="empty-state">Nenhum dado disponível</p>';
-        return;
-    }
-    
-    container.innerHTML = '';
-    
-    items.slice(0, 7).forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'distribution-item';
-        row.innerHTML = `
-            <span class="distribution-label">${item.label || 'N/A'}</span>
-            <span class="distribution-value">${(item.value || 0).toLocaleString()} ${label}</span>
-        `;
-        container.appendChild(row);
-    });
-}
-
 function renderLeadRecentTable() {
     if (!leadsRecentHead || !leadsRecentBody) return;
     
