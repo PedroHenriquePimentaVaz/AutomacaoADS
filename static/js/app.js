@@ -634,7 +634,6 @@ function renderLeadsByCategoryChart(data) {
 
 
 function renderLeadDistributions() {
-    const distributions = filteredLeadsData?.distributions || {};
     const estatisticas = filteredLeadsData?.estatisticas || {};
     
     // Adicionar distribuições de fase e categoria se disponíveis
@@ -707,10 +706,6 @@ function renderLeadDistributions() {
             });
         }
     }
-    
-    populateDistributionList(leadStatusList, distributions.status, 'Leads');
-    populateDistributionList(leadSourceList, distributions.source, 'Leads');
-    populateDistributionList(leadOwnerList, distributions.owner, 'Leads');
 }
 
 function populateDistributionList(container, items, label) {
