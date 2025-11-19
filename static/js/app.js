@@ -695,6 +695,96 @@ function renderLeadDistributions() {
     }
 }
 
+function renderConversionRates() {
+    if (!filteredLeadsData) return;
+    
+    const estatisticas = filteredLeadsData.estatisticas || {};
+    const leadsPorFase = estatisticas.leads_por_fase || {};
+    const ordemFases = estatisticas.leads_por_fase_ordem || {};
+    
+    const conversionTableBody = document.getElementById('conversionTableBody');
+    if (!conversionTableBody) return;
+    
+    conversionTableBody.innerHTML = '';
+    
+    if (!leadsPorFase || Object.keys(leadsPorFase).length === 0) {
+        conversionTableBody.innerHTML = '<tr><td colspan="4">Nenhum dado disponível</td></tr>';
+        return;
+    }
+    
+    // Ordem customizada das fases
+    const ordemFasesLocal = {
+        'lead': 1, 'mql': 2, 'conexao': 3, 'conexão': 3,
+        'pre-call agendada': 4, 'pre call agendada': 4,
+        'pre-call realizada': 5, 'pre call realizada': 5,
+        'apresentação modelo agendada': 6, 'apresentacao modelo agendada': 6,
+        'apresentação modelo realizada': 7, 'apresentacao modelo realizada': 7,
+        'apresentação financeira agendada': 8, 'apresentacao financeira agendada': 8,
+        'reunião financeira realizada': 9, 'reuniao financeira realizada': 9,
+        'reunião fundador agendada': 10, 'reuniao fundador agendada': 10,
+        'aguardando decisão': 11, 'aguardando decisao': 11,
+        'contrato franquia': 12
+    };
+    
+    // Converter leads_por_fase para array e ordenar
+    const fasesArray = Object.entries(leadsPorFase).map(([fase, count]) => {
+        const countValue = typeof count === 'object' ? count.count : count;
+        const faseLower = fase.toLowerCase().trim();
+        
+        // Determinar ordem
+        let ordem = ordemFases[faseLower] || 9999;
+        if (ordem === 9999) {
+            for (const [key, val] of Object.entries(ordemFasesLocal)) {
+                if (faseLower.includes(key)) {
+                    ordem = val;
+                    break;
+                }
+            }
+        }
+        
+        return { fase, count: countValue, ordem };
+    }).sort((a, b) => a.ordem - b.ordem);
+    
+    // Calcular taxa de conversão entre etapas consecutivas
+    for (let i = 0; i < fasesArray.length; i++) {
+        const etapaAtual = fasesArray[i];
+        const proximaEtapa = fasesArray[i + 1];
+        
+        const row = document.createElement('tr');
+        
+        if (proximaEtapa) {
+            // Calcular taxa de conversão: (próxima etapa / etapa atual) * 100
+            const taxaConversao = etapaAtual.count > 0 
+                ? ((proximaEtapa.count / etapaAtual.count) * 100).toFixed(1)
+                : '0.0';
+            
+            const taxaNum = parseFloat(taxaConversao);
+            const rateClass = taxaNum >= 50 ? 'high' : taxaNum >= 25 ? 'medium' : 'low';
+            
+            row.innerHTML = `
+                <td>${etapaAtual.fase}</td>
+                <td>${proximaEtapa.fase}</td>
+                <td class="number-cell">${etapaAtual.count}</td>
+                <td class="number-cell">
+                    <span class="conversion-rate ${rateClass}">
+                        ${taxaConversao}%
+                    </span>
+                </td>
+            `;
+        } else {
+            // Última etapa - não há próxima
+            row.innerHTML = `
+                <td>${etapaAtual.fase}</td>
+                <td><em>Final do funil</em></td>
+                <td class="number-cell">${etapaAtual.count}</td>
+                <td class="number-cell">-</td>
+            `;
+        }
+        
+        conversionTableBody.appendChild(row);
+    }
+}
+
 function renderLeadRecentTable() {
     if (!leadsRecentHead || !leadsRecentBody) return;
     
