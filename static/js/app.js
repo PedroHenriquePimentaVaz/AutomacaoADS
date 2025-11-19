@@ -464,8 +464,25 @@ function renderLeadsByPhaseChart(data) {
         window.leadsByPhaseChart.destroy();
     }
     
-    const labels = Object.keys(data);
-    const values = Object.values(data);
+    // Ordenar fases pela ordem do funil (se disponível)
+    const estatisticas = filteredLeadsData?.estatisticas || {};
+    const fasesComOrdem = estatisticas.leads_por_fase_com_ordem || {};
+    
+    let sortedEntries;
+    if (Object.keys(fasesComOrdem).length > 0) {
+        // Usar ordem do funil
+        sortedEntries = Object.entries(data).sort((a, b) => {
+            const ordemA = fasesComOrdem[a[0]]?.ordem ?? 9999;
+            const ordemB = fasesComOrdem[b[0]]?.ordem ?? 9999;
+            return ordemA - ordemB;
+        });
+    } else {
+        // Fallback: ordenar por quantidade
+        sortedEntries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+    }
+    
+    const labels = sortedEntries.map(([fase]) => fase);
+    const values = sortedEntries.map(([, count]) => count);
     
     window.leadsByPhaseChart = new Chart(ctx, {
         type: 'bar',
