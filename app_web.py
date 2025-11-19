@@ -1906,7 +1906,6 @@ def verificar_sults_leads():
             total_mql = 0
             
             # Data atual para filtrar leads do mês atual
-            from datetime import datetime
             data_atual = datetime.now()
             mes_atual = data_atual.month
             ano_atual = data_atual.year
@@ -2078,18 +2077,19 @@ def verificar_sults_leads():
                     except:
                         pass
                 
-                # Para taxa de conversão: contar todos os leads do mês atual (abertos, perdidos, ganhos)
-                if is_mes_atual:
-                    if fase not in leads_por_fase_conversao:
-                        leads_por_fase_conversao[fase] = {'count': 1, 'ordem': fase_ordem}
-                    else:
-                        leads_por_fase_conversao[fase]['count'] += 1
-                
                 # Classificar lead por status
                 if status == 'perdido':
                     leads_perdidos.append(lead_data)
                 elif status == 'ganho':
                     leads_ganhos.append(lead_data)
+                
+                # Para taxa de conversão: contar todos os leads do mês atual (abertos, perdidos, ganhos)
+                # Isso deve ser feito ANTES do filtro de status para incluir todos
+                if is_mes_atual:
+                    if fase not in leads_por_fase_conversao:
+                        leads_por_fase_conversao[fase] = {'count': 1, 'ordem': fase_ordem}
+                    else:
+                        leads_por_fase_conversao[fase]['count'] += 1
                 
                 # Filtrar apenas leads em aberto para estatísticas, exibição e MQLs
                 if status != 'aberto':
