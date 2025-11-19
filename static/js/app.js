@@ -699,8 +699,9 @@ function renderConversionRates() {
     if (!filteredLeadsData) return;
     
     const estatisticas = filteredLeadsData.estatisticas || {};
-    const leadsPorFase = estatisticas.leads_por_fase || {};
-    const ordemFases = estatisticas.leads_por_fase_ordem || {};
+    // Usar leads_por_fase_conversao que inclui todos os leads do mês atual (abertos, ganhos, perdidos)
+    const leadsPorFase = estatisticas.leads_por_fase_conversao || estatisticas.leads_por_fase || {};
+    const ordemFases = estatisticas.leads_por_fase_conversao_ordem || estatisticas.leads_por_fase_ordem || {};
     
     const conversionTableBody = document.getElementById('conversionTableBody');
     if (!conversionTableBody) return;

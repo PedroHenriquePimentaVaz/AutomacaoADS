@@ -1902,7 +1902,14 @@ def verificar_sults_leads():
             leads_por_categoria = {}
             leads_por_responsavel = {}
             leads_por_unidade = {}
+            leads_por_fase_conversao = {}  # Para taxa de conversão: inclui todos os leads do mês atual
             total_mql = 0
+            
+            # Obter mês atual para filtrar leads
+            from datetime import datetime
+            hoje = datetime.now()
+            mes_atual = hoje.month
+            ano_atual = hoje.year
             
             for projeto in projetos:
                 # Verificação final: pular se for loja (otimizado)
@@ -2112,6 +2119,8 @@ def verificar_sults_leads():
                 'estatisticas': {
                     'leads_por_fase': {k: v['count'] if isinstance(v, dict) else v for k, v in leads_por_fase.items()},
                     'leads_por_fase_ordem': {k: v['ordem'] if isinstance(v, dict) else 9999 for k, v in leads_por_fase.items()},
+                    'leads_por_fase_conversao': {k: v['count'] if isinstance(v, dict) else v for k, v in leads_por_fase_conversao.items()},
+                    'leads_por_fase_conversao_ordem': {k: v['ordem'] if isinstance(v, dict) else 9999 for k, v in leads_por_fase_conversao.items()},
                     'leads_por_categoria': leads_por_categoria,
                     'leads_por_responsavel': leads_por_responsavel,
                     'leads_por_unidade': leads_por_unidade
