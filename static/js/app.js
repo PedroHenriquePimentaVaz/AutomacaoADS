@@ -9,9 +9,8 @@ let costsChart = null;
 let conversionChart = null;
 let campaignsChart = null;
 let filteredData = null;
-let leadStatusChart = null;
 let leadSourceChart = null;
-let leadTimelineChart = null;
+let leadOwnerChart = null;
 let filteredLeadsData = null;
 
 // DOM Elements
@@ -429,65 +428,6 @@ function renderLeadCharts() {
     }
 }
 
-function renderLeadsByResponsavelChart(data) {
-    const canvasId = 'leadOwnerChart';
-    let canvas = document.getElementById(canvasId);
-    
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    if (leadOwnerChart) {
-        leadOwnerChart.destroy();
-    }
-    
-    const labels = Object.keys(data);
-    const values = Object.values(data);
-    
-    // Ordenar por quantidade (maior para menor)
-    const sorted = labels.map((label, index) => ({ label, value: values[index] }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 10); // Top 10 responsáveis
-    
-    leadOwnerChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: sorted.map(item => item.label),
-            datasets: [{
-                label: 'Leads',
-                data: sorted.map(item => item.value),
-                backgroundColor: 'rgba(35, 116, 185, 0.8)',
-                borderColor: '#2374B9',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return `${context.parsed.x} leads`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1
-                    }
-                }
-            }
-        }
-    });
-}
 
 function renderLeadsByPhaseChart(data) {
     // Criar ou atualizar gráfico de leads por fase
@@ -1440,52 +1380,6 @@ function initializeCharts() {
         });
     }
 
-    const leadTimelineCtx = document.getElementById('leadTimelineChart');
-    if (leadTimelineCtx) {
-        leadTimelineChart = new Chart(leadTimelineCtx.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Leads',
-                    data: [],
-                    borderColor: '#edb125',
-                    backgroundColor: 'rgba(237, 177, 37, 0.15)',
-                    borderWidth: 3,
-                    tension: 0.35,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: '#E5E7EB'
-                        },
-                        ticks: {
-                            color: '#6B7280'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            color: '#E5E7EB'
-                        },
-                        ticks: {
-                            color: '#6B7280'
-                        }
-                    }
-                }
-            }
-        });
-    }
 }
 
 function renderCharts() {
