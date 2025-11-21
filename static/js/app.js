@@ -2311,7 +2311,8 @@ function displaySultsData(data) {
         distributions: {
             source: (() => {
                 const origemCount = {};
-                uniqueLeads.forEach(lead => {
+                // Filtrar apenas leads em andamento (status 'aberto')
+                uniqueLeads.filter(lead => lead.status === 'aberto' || lead.status === 'em andamento').forEach(lead => {
                     const origem = lead.origem || lead.origem_tipo || lead.source || 'SULTS';
                     origemCount[origem] = (origemCount[origem] || 0) + 1;
                 });
@@ -2321,7 +2322,8 @@ function displaySultsData(data) {
             })(),
             owner: (() => {
                 const ownerCount = {};
-                uniqueLeads.forEach(lead => {
+                // Filtrar apenas leads em andamento (status 'aberto')
+                uniqueLeads.filter(lead => lead.status === 'aberto' || lead.status === 'em andamento').forEach(lead => {
                     const owner = lead.responsavel || lead.owner || 'Sem responsável';
                     if (owner && owner !== 'Sem responsável') {
                         ownerCount[owner] = (ownerCount[owner] || 0) + 1;
