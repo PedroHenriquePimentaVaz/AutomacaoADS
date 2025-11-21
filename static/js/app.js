@@ -755,19 +755,15 @@ function renderConversionRates() {
         const row = document.createElement('tr');
         
         if (proximaEtapa) {
-            // Taxa de conversão: leads que chegaram na próxima etapa / leads que passaram pela etapa atual
-            // Se um lead está na próxima etapa, ele passou pela atual
-            // Então: (leads na próxima etapa) / (leads na etapa atual + leads que já passaram para próxima) * 100
-            // Simplificando: (leads na próxima etapa) / (leads na etapa atual) * 100
-            // Mas isso não está certo porque um lead na próxima etapa não está mais na atual
-            // O correto é: (leads que chegaram na próxima etapa) / (total de leads que passaram pela etapa atual)
-            // Como não temos histórico, vamos usar: (leads na próxima etapa) / (leads na etapa atual) * 100
-            // Mas isso assume que todos os leads na próxima etapa passaram pela atual
+            // Calcular total de leads que passaram pela etapa atual no mês
+            // Isso inclui: leads que ainda estão na etapa atual + leads que já avançaram para fases posteriores
+            // Somar todas as fases posteriores (assumindo que todos passaram pela etapa atual)
+            let totalPassouEtapaAtual = etapaAtual.count;
+            for (let j = i + 1; j < fasesArray.length; j++) {
+                totalPassouEtapaAtual += fasesArray[j].count;
+            }
             
-            // Contar total de leads que passaram pela etapa atual (incluindo os que já avançaram)
-            const totalPassouEtapaAtual = etapaAtual.count + proximaEtapa.count;
-            
-            // Taxa = (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
+            // Taxa de conversão: (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
             const taxaConversao = totalPassouEtapaAtual > 0 
                 ? ((proximaEtapa.count / totalPassouEtapaAtual) * 100).toFixed(1)
                 : '0.0';
