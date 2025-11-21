@@ -444,4 +444,59 @@ class SultsAPIClient:
         }
         
         return self._make_request('POST', endpoint, data=sults_data)
+    
+    def update_negocio_responsavel(self, negocio_id: int, responsavel_id: int) -> Dict:
+        """Atualiza o responsável de um negócio na SULTS"""
+        endpoint = f"/expansao/negocio/{negocio_id}"
+        
+        # Dados para atualização - tentar diferentes formatos conforme API
+        update_data = {
+            'usuarioId': responsavel_id
+        }
+        
+        # Ajustar headers conforme documentação
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json;charset=UTF-8'
+        
+        try:
+            # Tentar PUT primeiro
+            url = f"{self.BASE_URL}{endpoint}"
+            response = requests.put(url, json=update_data, headers=headers, timeout=10)
+            
+            if response.status_code in [200, 201, 204]:
+                try:
+                    return {
+                        'success': True,
+                        'data': response.json() if response.content else {}
+                    }
+                except:
+                    return {
+                        'success': True,
+                        'data': {}
+                    }
+            else:
+                # Tentar PATCH se PUT não funcionar
+                response = requests.patch(url, json=update_data, headers=headers, timeout=10)
+                if response.status_code in [200, 201, 204]:
+                    try:
+                        return {
+                            'success': True,
+                            'data': response.json() if response.content else {}
+                        }
+                    except:
+                        return {
+                            'success': True,
+                            'data': {}
+                        }
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Erro {response.status_code}: {response.text[:200]}'
+                    }
+        except Exception as e:
+            print(f"Erro ao atualizar responsável do negócio {negocio_id}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 

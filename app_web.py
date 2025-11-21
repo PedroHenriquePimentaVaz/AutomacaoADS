@@ -1959,6 +1959,7 @@ def verificar_sults_leads():
                 # Contar por responsável
                 responsavel = projeto.get('responsavel', {})
                 responsavel_nome = responsavel.get('nome', 'Sem responsável') if isinstance(responsavel, dict) else 'Sem responsável'
+                responsavel_id = responsavel.get('id') if isinstance(responsavel, dict) else None
                 
                 # Contar por unidade (usar contatoEmpresa se disponível)
                 contato_empresa = projeto.get('contatoEmpresa', {})
@@ -2033,6 +2034,7 @@ def verificar_sults_leads():
                     'email': email,
                     'telefone': telefone,
                     'responsavel': responsavel_nome,
+                    'responsavel_id': responsavel_id,
                     'unidade': unidade_nome or (contato_empresa.get('nomeFantasia', '') if isinstance(contato_empresa, dict) else ''),
                     'categoria': categoria_nome,
                     'fase': fase,
@@ -2322,6 +2324,44 @@ def sync_lead_to_sults():
         return jsonify({
             'success': False,
             'error': f'Erro ao sincronizar lead: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/update-responsavel', methods=['POST'])
+def update_negocio_responsavel():
+    """Atualiza o responsável de um negócio na SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Dados não fornecidos'}), 400
+        
+        negocio_id = data.get('negocio_id')
+        responsavel_id = data.get('responsavel_id')
+        
+        if not negocio_id or not responsavel_id:
+            return jsonify({'success': False, 'error': 'negocio_id e responsavel_id são obrigatórios'}), 400
+        
+        client = SultsAPIClient()
+        result = client.update_negocio_responsavel(int(negocio_id), int(responsavel_id))
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'Responsável atualizado com sucesso',
+                'data': result.get('data', {})
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao atualizar responsável')
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao atualizar responsável: {str(e)}'
         }), 500
 
 if __name__ == '__main__':

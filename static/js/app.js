@@ -1151,7 +1151,14 @@ function renderLeadsDetail() {
                         <i class="fas fa-user-tie"></i>
                         <div class="lead-detail-content">
                             <span class="lead-detail-label">Responsável</span>
-                            <span class="lead-detail-value">${lead.responsavel || '-'}</span>
+                            <div class="responsavel-edit-container">
+                                <span class="lead-detail-value responsavel-value" data-lead-id="${lead.id}" data-current-responsavel-id="${lead.responsavel_id || ''}">
+                                    ${lead.responsavel || '-'}
+                                </span>
+                                <button class="btn-edit-responsavel" onclick="editResponsavel('${lead.id}', '${lead.responsavel || ''}', '${lead.responsavel_id || ''}')" title="Editar responsável">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="lead-detail-item">
@@ -2468,6 +2475,7 @@ function displaySultsData(data) {
             origem: lead.origem || lead.origem_tipo || lead.source || 'SULTS',
             data: lead.data || lead.date || lead.data_criacao || lead.data_inicio || new Date().toISOString().split('T')[0],
             responsavel: lead.responsavel || '',
+            responsavel_id: lead.responsavel_id || null,
             unidade: lead.unidade || '',
             fase: lead.fase || '',
             categoria: lead.categoria || '',
