@@ -163,7 +163,7 @@ class SultsAPIClient:
                 headers=self.headers,
                 params=params,
                 json=data,
-                timeout=10  # Timeout de 10 segundos
+                timeout=5  # Reduzir timeout para 5 segundos
             )
             response.raise_for_status()
             
@@ -298,10 +298,11 @@ class SultsAPIClient:
         if 'start' not in params:
             params['start'] = 0
         if 'limit' not in params:
-            params['limit'] = 1000  # Aumentar limite padrão para reduzir requisições
+            params['limit'] = 100
         
-        # Não adicionar filtro de funil por padrão - deixar a API retornar todos e filtrar depois
-        # O filtro pode ser muito restritivo e excluir dados válidos
+        # Filtrar por funil de franqueados (ID 1 geralmente é Franqueados)
+        if 'funil' not in params:
+            params['funil'] = 1
         
         # Ajustar headers conforme documentação
         headers = self.headers.copy()

@@ -102,6 +102,8 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 
 ### Integração SULTS API
 - Sincronização de leads com a plataforma SULTS
+- Foco exclusivo em negócios abertos (status Andamento/Adiado) para garantir a análise apenas de oportunidades ativas
+- Detecção automática de MQLs diretamente das etiquetas retornadas pelo endpoint `/expansao/negocio`
 - Busca de chamados e status de leads
 - Consulta de unidades e projetos
 - Endpoints disponíveis:

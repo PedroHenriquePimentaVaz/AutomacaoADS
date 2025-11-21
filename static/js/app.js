@@ -288,6 +288,7 @@ function renderLeadsDashboard() {
     renderConversionRates();
     renderLeadRecentTable();
     renderLeadsByPhase();
+    renderLeadsDetail();
     renderLeadsTable();
 }
 
@@ -764,9 +765,10 @@ function renderConversionRates() {
             }
             
             // Taxa de conversão: (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
-            // Os leads que chegaram na próxima etapa são os que estão nela + os que avançaram para fases posteriores
-            // Exemplo: MQL → Conexão: leads em Conexão + leads em Pre-call + leads em outras fases posteriores
-            // Todos esses leads passaram por Conexão, então contamos todos
+            // Os leads que chegaram na próxima etapa incluem:
+            // - Leads que estão atualmente na próxima etapa
+            // - Leads que já avançaram para fases posteriores (todos passaram pela próxima etapa)
+            // Exemplo: MQL → Conexão: se um lead está em Pre-call, ele passou por Conexão, então conta
             let totalChegouProximaEtapa = proximaEtapa.count;
             for (let j = i + 2; j < fasesArray.length; j++) {
                 totalChegouProximaEtapa += fasesArray[j].count;
@@ -1067,6 +1069,168 @@ function renderLeadsByPhase() {
         phaseCard.appendChild(phaseHeader);
         phaseCard.appendChild(phaseContent);
         container.appendChild(phaseCard);
+    });
+}
+
+function renderLeadsDetail() {
+    const container = document.getElementById('leadsDetailContainer');
+    if (!container || !filteredLeadsData) return;
+    
+    const leads = filteredLeadsData.leads || [];
+    
+    // Filtrar apenas leads em andamento (status 'aberto')
+    const leadsEmAndamento = leads.filter(lead => 
+        lead.status === 'aberto' || lead.status === 'em andamento' || lead.status === 'Aberto'
+    );
+    
+    container.innerHTML = '';
+    
+    if (leadsEmAndamento.length === 0) {
+        container.innerHTML = '<p class="no-leads-message">Nenhum lead em andamento encontrado.</p>';
+        return;
+    }
+    
+    // Ordenar por nome
+    leadsEmAndamento.sort((a, b) => {
+        const nomeA = (a.nome || '').toLowerCase();
+        const nomeB = (b.nome || '').toLowerCase();
+        return nomeA.localeCompare(nomeB);
+    });
+    
+    leadsEmAndamento.forEach(lead => {
+        const leadCard = document.createElement('div');
+        leadCard.className = 'lead-detail-card';
+        
+        const fase = lead.fase || 'Sem fase';
+        const faseLower = fase.toLowerCase();
+        let faseColor = '#6B7280'; // Cinza padrão
+        
+        // Cores por fase
+        if (faseLower.includes('mql')) {
+            faseColor = '#3B82F6'; // Azul
+        } else if (faseLower.includes('conexão') || faseLower.includes('conexao')) {
+            faseColor = '#8B5CF6'; // Roxo
+        } else if (faseLower.includes('pre-call')) {
+            faseColor = '#F59E0B'; // Laranja
+        } else if (faseLower.includes('apresentação') || faseLower.includes('apresentacao')) {
+            faseColor = '#10B981'; // Verde
+        } else if (faseLower.includes('reunião') || faseLower.includes('reuniao')) {
+            faseColor = '#EC4899'; // Rosa
+        } else if (faseLower.includes('contrato')) {
+            faseColor = '#14B8A6'; // Verde água
+        }
+        
+        leadCard.innerHTML = `
+            <div class="lead-detail-header">
+                <div class="lead-detail-title">
+                    <h3>${lead.nome || 'Sem nome'}</h3>
+                    <span class="lead-fase-badge" style="background-color: ${faseColor}">
+                        ${fase}
+                    </span>
+                </div>
+            </div>
+            <div class="lead-detail-body">
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item">
+                        <i class="fas fa-envelope"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Email</span>
+                            <span class="lead-detail-value">${lead.email || '-'}</span>
+                        </div>
+                    </div>
+                    <div class="lead-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Telefone</span>
+                            <span class="lead-detail-value">${lead.telefone || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item">
+                        <i class="fas fa-user-tie"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Responsável</span>
+                            <span class="lead-detail-value">${lead.responsavel || '-'}</span>
+                        </div>
+                    </div>
+                    <div class="lead-detail-item">
+                        <i class="fas fa-building"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Unidade</span>
+                            <span class="lead-detail-value">${lead.unidade || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item">
+                        <i class="fas fa-tag"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Categoria</span>
+                            <span class="lead-detail-value">${lead.categoria || '-'}</span>
+                        </div>
+                    </div>
+                    <div class="lead-detail-item">
+                        <i class="fas fa-funnel-dollar"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Funil</span>
+                            <span class="lead-detail-value">${lead.funil || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Localização</span>
+                            <span class="lead-detail-value">${lead.cidade || '-'}${lead.uf ? ', ' + lead.uf : ''}</span>
+                        </div>
+                    </div>
+                    <div class="lead-detail-item">
+                        <i class="fas fa-calendar"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Data de Criação</span>
+                            <span class="lead-detail-value">${lead.data_criacao ? new Date(lead.data_criacao).toLocaleDateString('pt-BR') : (lead.data ? new Date(lead.data).toLocaleDateString('pt-BR') : '-')}</span>
+                        </div>
+                    </div>
+                </div>
+                ${lead.origem ? `
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item">
+                        <i class="fas fa-source"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Origem</span>
+                            <span class="lead-detail-value">${lead.origem || lead.origem_tipo || '-'}</span>
+                        </div>
+                    </div>
+                    ${lead.valor ? `
+                    <div class="lead-detail-item">
+                        <i class="fas fa-dollar-sign"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Valor</span>
+                            <span class="lead-detail-value">R$ ${parseFloat(lead.valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+                ${lead.etiquetas && lead.etiquetas.length > 0 ? `
+                <div class="lead-detail-row">
+                    <div class="lead-detail-item full-width">
+                        <i class="fas fa-tags"></i>
+                        <div class="lead-detail-content">
+                            <span class="lead-detail-label">Etiquetas</span>
+                            <div class="lead-tags">
+                                ${lead.etiquetas.map(tag => `<span class="lead-tag">${tag}</span>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        container.appendChild(leadCard);
     });
 }
 
