@@ -2472,7 +2472,14 @@ function displaySultsData(data) {
             fase: lead.fase || '',
             categoria: lead.categoria || '',
             etapa: lead.etapa || '',
-            funil: lead.funil || ''
+            funil: lead.funil || '',
+            data_criacao: lead.data_criacao || lead.data || lead.date || '',
+            data_inicio: lead.data_inicio || '',
+            cidade: lead.cidade || '',
+            uf: lead.uf || '',
+            valor: lead.valor || 0,
+            etiquetas: lead.etiquetas || [],
+            temperatura: lead.temperatura || ''
         })),
         status_distribution: {
             'Abertos': sultsLeads.resumo.abertos,
