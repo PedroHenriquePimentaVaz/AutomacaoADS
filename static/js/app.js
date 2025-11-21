@@ -767,6 +767,7 @@ function renderConversionRates() {
             // O total que passou pela etapa atual é a soma de todos os leads que estão nela ou em fases posteriores
             // A porcentagem deve ser: (leads na próxima etapa) / (total que passou pela etapa atual) * 100
             // Exemplo: MQL → Conexão: se temos 31 em MQL e 4 em Conexão, total = 35, taxa = 4/35 = 11.4%
+            // Mas verificar se o cálculo está correto: se totalPassouEtapaAtual = 35 e proximaEtapa.count = 4, então 4/35 = 11.4%
             const taxaConversao = totalPassouEtapaAtual > 0 
                 ? ((proximaEtapa.count / totalPassouEtapaAtual) * 100).toFixed(1)
                 : '0.0';
