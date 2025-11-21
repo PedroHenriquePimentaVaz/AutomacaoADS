@@ -2313,6 +2313,121 @@ function convertToCSV(data) {
     return csvRows.join('\n');
 }
 
+// Função para editar responsável
+function editResponsavel(leadId, currentResponsavel, currentResponsavelId) {
+    // Coletar todos os responsáveis únicos dos leads
+    const allLeads = filteredLeadsData?.leads || [];
+    const responsaveisMap = new Map();
+    
+    allLeads.forEach(lead => {
+        if (lead.responsavel && lead.responsavel !== '-' && lead.responsavel !== 'Sem responsável') {
+            const nome = lead.responsavel;
+            const id = lead.responsavel_id || null;
+            if (!responsaveisMap.has(nome)) {
+                responsaveisMap.set(nome, id);
+            }
+        }
+    });
+    
+    const responsaveis = Array.from(responsaveisMap.entries()).map(([nome, id]) => ({ nome, id }));
+    
+    // Criar modal para seleção
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Alterar Responsável</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Lead:</strong> ${allLeads.find(l => l.id == leadId)?.nome || 'N/A'}</p>
+                <p><strong>Responsável Atual:</strong> ${currentResponsavel || '-'}</p>
+                <div class="form-group">
+                    <label for="newResponsavel">Novo Responsável:</label>
+                    <select id="newResponsavel" class="form-select">
+                        <option value="">Selecione um responsável...</option>
+                        ${responsaveis.map(r => `<option value="${r.id || ''}" data-nome="${r.nome}">${r.nome}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveResponsavel('${leadId}', '${currentResponsavelId || ''}')">Salvar</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Fechar ao clicar fora
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Função para salvar responsável
+async function saveResponsavel(leadId, currentResponsavelId) {
+    const select = document.getElementById('newResponsavel');
+    const selectedOption = select.options[select.selectedIndex];
+    const newResponsavelId = select.value;
+    const newResponsavelNome = selectedOption ? selectedOption.getAttribute('data-nome') : '';
+    
+    if (!newResponsavelId) {
+        alert('Por favor, selecione um responsável.');
+        return;
+    }
+    
+    if (newResponsavelId === currentResponsavelId) {
+        alert('O responsável selecionado é o mesmo atual.');
+        document.querySelector('.modal-overlay')?.remove();
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/sults/update-responsavel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                negocio_id: leadId,
+                responsavel_id: parseInt(newResponsavelId)
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Atualizar o valor exibido no card
+            const responsavelValue = document.querySelector(`.responsavel-value[data-lead-id="${leadId}"]`);
+            if (responsavelValue) {
+                responsavelValue.textContent = newResponsavelNome;
+                responsavelValue.setAttribute('data-current-responsavel-id', newResponsavelId);
+            }
+            
+            // Atualizar no objeto de dados
+            const lead = filteredLeadsData.leads.find(l => l.id == leadId);
+            if (lead) {
+                lead.responsavel = newResponsavelNome;
+                lead.responsavel_id = parseInt(newResponsavelId);
+            }
+            
+            alert('Responsável atualizado com sucesso!');
+            document.querySelector('.modal-overlay')?.remove();
+        } else {
+            alert(`Erro ao atualizar responsável: ${result.error || 'Erro desconhecido'}`);
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar responsável:', error);
+        alert('Erro ao atualizar responsável. Por favor, tente novamente.');
+    }
+}
+
 function downloadCSV(content, filename) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
