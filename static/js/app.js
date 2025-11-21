@@ -764,19 +764,21 @@ function renderConversionRates() {
             }
             
             // Taxa de conversão: (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
-            // O total que passou pela etapa atual é a soma de todos os leads que estão nela ou em fases posteriores
-            // A porcentagem deve ser: (leads na próxima etapa) / (total que passou pela etapa atual) * 100
-            // Exemplo: MQL → Conexão: se temos 31 em MQL e 4 em Conexão, total = 35, taxa = 4/35 = 11.4%
-            // Mas verificar se o cálculo está correto: se totalPassouEtapaAtual = 35 e proximaEtapa.count = 4, então 4/35 = 11.4%
+            // Os leads que chegaram na próxima etapa são os que estão nela + os que avançaram para fases posteriores
+            // Exemplo: MQL → Conexão: leads em Conexão + leads em Pre-call + leads em outras fases posteriores
+            // Todos esses leads passaram por Conexão, então contamos todos
+            let totalChegouProximaEtapa = proximaEtapa.count;
+            for (let j = i + 2; j < fasesArray.length; j++) {
+                totalChegouProximaEtapa += fasesArray[j].count;
+            }
+            
             const taxaConversao = totalPassouEtapaAtual > 0 
-                ? ((proximaEtapa.count / totalPassouEtapaAtual) * 100).toFixed(1)
+                ? ((totalChegouProximaEtapa / totalPassouEtapaAtual) * 100).toFixed(1)
                 : '0.0';
             
             const taxaNum = parseFloat(taxaConversao);
             const rateClass = taxaNum >= 50 ? 'high' : taxaNum >= 25 ? 'medium' : 'low';
             
-            // Mostrar na coluna "Leads na Etapa" o total que passou pela etapa atual (para cálculo da conversão)
-            // Este é o denominador usado no cálculo da porcentagem
             row.innerHTML = `
                 <td>${etapaAtual.fase}</td>
                 <td>${proximaEtapa.fase}</td>
