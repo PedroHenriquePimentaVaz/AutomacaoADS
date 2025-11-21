@@ -764,6 +764,8 @@ function renderConversionRates() {
             }
             
             // Taxa de conversão: (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
+            // O total que passou pela etapa atual é a soma de todos os leads que estão nela ou em fases posteriores
+            // A porcentagem deve ser: (leads na próxima etapa) / (total que passou pela etapa atual) * 100
             const taxaConversao = totalPassouEtapaAtual > 0 
                 ? ((proximaEtapa.count / totalPassouEtapaAtual) * 100).toFixed(1)
                 : '0.0';
@@ -771,6 +773,7 @@ function renderConversionRates() {
             const taxaNum = parseFloat(taxaConversao);
             const rateClass = taxaNum >= 50 ? 'high' : taxaNum >= 25 ? 'medium' : 'low';
             
+            // Mostrar na coluna "Leads na Etapa" o total que passou pela etapa atual (para cálculo da conversão)
             row.innerHTML = `
                 <td>${etapaAtual.fase}</td>
                 <td>${proximaEtapa.fase}</td>
