@@ -747,6 +747,7 @@ function renderConversionRates() {
     }).sort((a, b) => a.ordem - b.ordem);
     
     // Calcular taxa de conversão entre etapas consecutivas
+    // Para cada transição: (leads que chegaram na fase destino no mês) / (leads que passaram pela fase origem no mês) * 100
     for (let i = 0; i < fasesArray.length; i++) {
         const etapaAtual = fasesArray[i];
         const proximaEtapa = fasesArray[i + 1];
@@ -754,9 +755,21 @@ function renderConversionRates() {
         const row = document.createElement('tr');
         
         if (proximaEtapa) {
-            // Calcular taxa de conversão: (próxima etapa / etapa atual) * 100
-            const taxaConversao = etapaAtual.count > 0 
-                ? ((proximaEtapa.count / etapaAtual.count) * 100).toFixed(1)
+            // Taxa de conversão: leads que chegaram na próxima etapa / leads que passaram pela etapa atual
+            // Se um lead está na próxima etapa, ele passou pela atual
+            // Então: (leads na próxima etapa) / (leads na etapa atual + leads que já passaram para próxima) * 100
+            // Simplificando: (leads na próxima etapa) / (leads na etapa atual) * 100
+            // Mas isso não está certo porque um lead na próxima etapa não está mais na atual
+            // O correto é: (leads que chegaram na próxima etapa) / (total de leads que passaram pela etapa atual)
+            // Como não temos histórico, vamos usar: (leads na próxima etapa) / (leads na etapa atual) * 100
+            // Mas isso assume que todos os leads na próxima etapa passaram pela atual
+            
+            // Contar total de leads que passaram pela etapa atual (incluindo os que já avançaram)
+            const totalPassouEtapaAtual = etapaAtual.count + proximaEtapa.count;
+            
+            // Taxa = (leads que chegaram na próxima etapa) / (total que passou pela etapa atual) * 100
+            const taxaConversao = totalPassouEtapaAtual > 0 
+                ? ((proximaEtapa.count / totalPassouEtapaAtual) * 100).toFixed(1)
                 : '0.0';
             
             const taxaNum = parseFloat(taxaConversao);
@@ -765,7 +778,7 @@ function renderConversionRates() {
             row.innerHTML = `
                 <td>${etapaAtual.fase}</td>
                 <td>${proximaEtapa.fase}</td>
-                <td class="number-cell">${etapaAtual.count}</td>
+                <td class="number-cell">${totalPassouEtapaAtual}</td>
                 <td class="number-cell">
                     <span class="conversion-rate ${rateClass}">
                         ${taxaConversao}%
