@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 import io
 import json
 import requests
+import re
+import unicodedata
+from collections import defaultdict
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -127,6 +130,89 @@ def load_leads_dataframe_from_google_sheets(spreadsheet_id, credentials, priorit
     }
 
 
+def normalize_sheet_title(title):
+    if not title:
+        return ''
+    return ' '.join(str(title).strip().lower().split())
+
+
+def load_google_ads_sheet(spreadsheet_id, credentials, preferred_sheets=None):
+    """Carrega a planilha do Google Ads diretamente do Google Sheets (suporta múltiplas abas)."""
+    if preferred_sheets is None:
+        preferred_sheets = ['Controle Google ADS', 'Controle Google ADS 2']
+    
+    preferred_sheets = [sheet.strip() for sheet in (preferred_sheets or []) if sheet and sheet.strip()]
+    sheets_service = build('sheets', 'v4', credentials=credentials)
+    metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    
+    sheet_titles = [sheet.get('properties', {}).get('title', '') for sheet in metadata.get('sheets', [])]
+    ordered_titles = []
+    matched_titles = []
+    
+    for preferred in preferred_sheets:
+        preferred_match = next(
+            (title for title in sheet_titles if normalize_sheet_title(title) == normalize_sheet_title(preferred)),
+            None
+        )
+        if preferred_match and preferred_match not in ordered_titles:
+            ordered_titles.append(preferred_match)
+            matched_titles.append(preferred_match)
+    
+    if not ordered_titles:
+        raise ValueError(f"Nenhuma das abas solicitadas foi encontrada: {preferred_sheets}")
+    
+    frames = {}
+    sheet_stats = []
+    
+    for title in ordered_titles:
+        if not title:
+            continue
+        
+        values_response = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=title
+        ).execute()
+        
+        values = values_response.get('values', [])
+        if not values or len(values) <= 1:
+            print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' sem dados ou apenas cabeçalho.")
+            continue
+        
+        header = _make_unique_headers(values[0])
+        data_rows = values[1:]
+        max_columns = max(len(row) for row in values)
+        while len(header) < max_columns:
+            header.append(f"Coluna_{len(header) + 1}")
+        
+        normalized_rows = []
+        for row in data_rows:
+            if len(row) < len(header):
+                row = row + [''] * (len(header) - len(row))
+            normalized_rows.append(row)
+        
+        df_sheet = pd.DataFrame(normalized_rows, columns=header)
+        df_sheet.replace('', pd.NA, inplace=True)
+        cleaned_df = df_sheet.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
+        
+        if cleaned_df.empty:
+            print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' sem linhas após limpeza.")
+            continue
+        
+        sheet_stats.append({'name': title, 'rows': int(cleaned_df.shape[0]), 'columns': int(cleaned_df.shape[1])})
+        frames[title] = cleaned_df
+        print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' carregada -> linhas: {cleaned_df.shape[0]}, colunas: {cleaned_df.shape[1]}")
+    
+    if not frames:
+        raise ValueError("Nenhuma aba válida encontrada na planilha do Google Ads via Sheets API.")
+    
+    return frames, {
+        'primary_sheets': matched_titles,
+        'sheet_stats': sheet_stats,
+        'sheet_count': len(frames),
+        'loaded_sheets': list(frames.keys())
+    }
+
+
 def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx', priority_names=None):
     """Lê planilhas locais combinando todas as abas com dados válidos."""
     file_like = io.BytesIO(file_bytes)
@@ -241,7 +327,10 @@ def load_drive_credentials():
         
         credentials = service_account.Credentials.from_service_account_file(
             credentials_file,
-            scopes=['https://www.googleapis.com/auth/drive.readonly']
+            scopes=[
+                'https://www.googleapis.com/auth/drive.readonly',
+                'https://www.googleapis.com/auth/spreadsheets.readonly'
+            ]
         )
         print(f"Credenciais carregadas de: {credentials_file}")
         return credentials
@@ -314,6 +403,118 @@ def clean_dataframe_for_json(df):
                 clean_row[col] = str(value)
         cleaned_data.append(clean_row)
     return cleaned_data
+
+def analyze_google_ads_funnels(df):
+    """Gera métricas financeiras da aba Controle Google ADS 2."""
+    result = {
+        'records': [],
+        'totals': {
+            'investimento': 0.0,
+            'clicks': 0,
+            'impressions': 0,
+            'ctr': 0.0,
+            'cpc': 0.0
+        },
+        'has_data': False,
+        'source': 'Controle Google ADS 2'
+    }
+    
+    if df is None or df.empty:
+        return result
+    
+    working_df = df.copy()
+    
+    def _find_column(keywords):
+        for col in working_df.columns:
+            lower_col = col.lower()
+            if any(keyword in lower_col for keyword in keywords):
+                return col
+        return None
+    
+    def _to_numeric(series):
+        if series is None:
+            return pd.Series([0] * len(working_df))
+        if series.dtype == object:
+            cleaned = series.astype(str).str.replace(r'[^0-9,\.\-]', '', regex=True)
+            cleaned = cleaned.str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+            return pd.to_numeric(cleaned, errors='coerce')
+        return pd.to_numeric(series, errors='coerce')
+    
+    name_col = _find_column(['name', 'funil']) or working_df.columns[0]
+    clicks_col = _find_column(['click'])
+    impressions_col = _find_column(['impress'])
+    cost_col = _find_column(['cost', 'invest'])
+    
+    if cost_col is None:
+        return result
+    
+    working_df[cost_col] = _to_numeric(working_df[cost_col]).fillna(0)
+    if clicks_col:
+        working_df[clicks_col] = _to_numeric(working_df[clicks_col]).fillna(0)
+    else:
+        clicks_col = '__clicks__'
+        working_df[clicks_col] = 0
+    
+    if impressions_col:
+        working_df[impressions_col] = _to_numeric(working_df[impressions_col]).fillna(0)
+    else:
+        impressions_col = '__impressions__'
+        working_df[impressions_col] = 0
+    
+    records = []
+    total_entry = None
+    
+    for _, row in working_df.iterrows():
+        name = str(row.get(name_col, '')).strip()
+        if not name:
+            continue
+        
+        clicks = float(row.get(clicks_col, 0) or 0)
+        impressions = float(row.get(impressions_col, 0) or 0)
+        investimento = float(row.get(cost_col, 0) or 0)
+        ctr = (clicks / impressions * 100) if impressions else 0.0
+        cpc = (investimento / clicks) if clicks else 0.0
+        is_total = normalize_sheet_title(name) in {'total', 'totais', 'geral'}
+        
+        record = {
+            'name': name,
+            'investimento': round(investimento, 2),
+            'clicks': int(clicks),
+            'impressions': int(impressions),
+            'ctr': round(ctr, 2),
+            'cpc': round(cpc, 2),
+            'is_total': bool(is_total)
+        }
+        
+        if is_total:
+            total_entry = record
+        else:
+            records.append(record)
+    
+    if not records and not total_entry:
+        return result
+    
+    records.sort(key=lambda item: item['investimento'], reverse=True)
+    if total_entry:
+        total_entry['name'] = total_entry['name'] or 'Total'
+        records.append(total_entry)
+    
+    total_invest = sum(item['investimento'] for item in records if not item.get('is_total'))
+    total_clicks = sum(item['clicks'] for item in records if not item.get('is_total'))
+    total_impressions = sum(item['impressions'] for item in records if not item.get('is_total'))
+    total_ctr = (total_clicks / total_impressions * 100) if total_impressions else 0.0
+    total_cpc = (total_invest / total_clicks) if total_clicks else 0.0
+    
+    result['records'] = records
+    result['totals'] = {
+        'investimento': round(total_invest, 2),
+        'clicks': int(total_clicks),
+        'impressions': int(total_impressions),
+        'ctr': round(total_ctr, 2),
+        'cpc': round(total_cpc, 2)
+    }
+    result['has_data'] = True
+    return result
 
 def fill_empty_fields_with_zero(df):
     """Preenche campos em branco com 0"""
@@ -604,6 +805,466 @@ def detect_lead_name_column(df):
             return col
     return df.columns[0] if len(df.columns) > 0 else None
 
+def detect_lead_email_column(df):
+    """Detecta coluna de e-mail"""
+    email_keywords = ['email', 'e-mail', 'mail']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in email_keywords):
+            return col
+    return None
+
+def detect_lead_phone_column(df):
+    """Detecta coluna de telefone"""
+    phone_keywords = ['fone', 'telefone', 'phone', 'celular', 'whats', 'whatsapp', 'tel']
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if any(keyword in col_lower for keyword in phone_keywords):
+            return col
+    return None
+
+STATUS_LABELS = {
+    'aberto': 'Em andamento',
+    'perdido': 'Perdido',
+    'ganho': 'Ganho',
+    'outros': 'Outros'
+}
+
+SULTS_LEADS_CACHE = {
+    'timestamp': None,
+    'leads': [],
+    'total': 0
+}
+SULTS_CACHE_TTL_SECONDS = 300  # 5 minutos
+
+def normalize_email(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ''
+    return str(value).strip().lower()
+
+def normalize_phone(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ''
+    digits = re.sub(r'\D', '', str(value))
+    if digits.startswith('55') and len(digits) > 11:
+        digits = digits[-11:]
+    if len(digits) > 11:
+        digits = digits[-11:]
+    return digits
+
+def normalize_status_key(value):
+    if not value:
+        return 'outros'
+    text = str(value).lower()
+    if any(keyword in text for keyword in ['ganh', 'won', 'cliente', 'conclu']):
+        return 'ganho'
+    if any(keyword in text for keyword in ['perd', 'lost', 'cancel', 'desist', 'no show', 'no-show']):
+        return 'perdido'
+    if any(keyword in text for keyword in ['abert', 'andament', 'pendente', 'agendado', 'analise', 'andamento']):
+        return 'aberto'
+    return 'outros'
+
+def build_status_label(key):
+    return STATUS_LABELS.get(key, STATUS_LABELS['outros'])
+
+def normalize_origin_label(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return 'SULTS'
+    if isinstance(value, dict):
+        return value.get('nome') or value.get('name') or 'SULTS'
+    text = str(value).strip()
+    if not text:
+        return 'SULTS'
+    if text.startswith('{') and text.endswith('}'):
+        try:
+            parsed = json.loads(text)
+            label = parsed.get('nome') or parsed.get('name')
+            if label:
+                return normalize_origin_label(label)
+        except Exception:
+            pass
+    if text.startswith('[') and ']' in text:
+        tokens = re.findall(r'\[([^\]]+)\]', text)
+        cleaned = []
+        for tok in tokens:
+            if not tok or tok.upper() in ('V', 'VI', 'VII', 'VIII', 'IX', 'X'):
+                continue
+            token_clean = tok.replace('_', ' ').replace('-', ' ').strip()
+            if not token_clean:
+                continue
+            cleaned.append(token_clean.title())
+        if cleaned:
+            return ' / '.join(cleaned[:3])
+    friendly = text.replace('_', ' ').replace('-', ' ').strip()
+    if friendly.lower() in ('google ads', 'googleads'):
+        return 'Google Ads'
+    if friendly.lower() in ('facebook ads', 'facebookads', 'facebook'):
+        return 'Facebook'
+    if friendly.lower() == 'organico':
+        return 'Orgânico'
+    return friendly.title()
+
+def normalize_owner_label(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return 'Sem responsável'
+    text = str(value).strip()
+    if not text:
+        return 'Sem responsável'
+    if text.startswith('{') and text.endswith('}'):
+        try:
+            parsed = json.loads(text)
+            label = parsed.get('nome') or parsed.get('name')
+            if label:
+                return normalize_owner_label(label)
+        except Exception:
+            pass
+    return text.title()
+
+def summarize_distribution(items, limit=6):
+    if not items:
+        return [], 0
+    sorted_items = sorted(items, key=lambda x: x['value'], reverse=True)
+    total = sum(item['value'] for item in sorted_items)
+    if total == 0:
+        return (
+            [
+                {'label': item['label'], 'value': int(item['value']), 'percentage': 0.0}
+                for item in sorted_items[:limit]
+            ],
+            0
+        )
+    summary = []
+    for idx, item in enumerate(sorted_items):
+        if idx < limit:
+            percentage = round((item['value'] / total) * 100, 1)
+            summary.append({
+                'label': item['label'],
+                'value': int(item['value']),
+                'percentage': percentage
+            })
+        else:
+            break
+    outros_value = sum(item['value'] for item in sorted_items[limit:])
+    if outros_value > 0:
+        summary.append({
+            'label': 'Outros',
+            'value': int(outros_value),
+            'percentage': round((outros_value / total) * 100, 1)
+        })
+    return summary, total
+
+def normalize_name(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ''
+    text = str(value).strip().lower()
+    if not text:
+        return ''
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join(char for char in text if not unicodedata.combining(char))
+    text = re.sub(r'[^a-z0-9 ]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def _should_skip_project(projeto):
+    nome = (projeto.get('nome') or projeto.get('titulo') or '').lower()
+    etapa = projeto.get('etapa', {})
+    funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+    funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+    palavras_excluir = ['loja', 'extrabom']
+    return any(palavra in nome or palavra in funil_nome for palavra in palavras_excluir)
+
+def _extract_sults_lead_entry(projeto):
+    if _should_skip_project(projeto):
+        return None
+    
+    etapa = projeto.get('etapa', {}) if isinstance(projeto.get('etapa'), dict) else {}
+    funil = etapa.get('funil', {}) if isinstance(etapa, dict) else {}
+    funil_nome = funil.get('nome', '').lower() if isinstance(funil, dict) else ''
+    categoria = projeto.get('categoria', {}) if isinstance(projeto.get('categoria'), dict) else {}
+    categoria_nome = categoria.get('nome', 'Sem categoria') if isinstance(categoria, dict) else 'Sem categoria'
+    responsavel = projeto.get('responsavel', {}) if isinstance(projeto.get('responsavel'), dict) else {}
+    responsavel_nome = responsavel.get('nome', 'Sem responsável') if isinstance(responsavel, dict) else 'Sem responsável'
+    
+    contato_pessoa = projeto.get('contatoPessoa', [])
+    contato_empresa = projeto.get('contatoEmpresa', {})
+    
+    email = ''
+    telefone = ''
+    if contato_pessoa and isinstance(contato_pessoa, list):
+        primeiro = contato_pessoa[0]
+        if isinstance(primeiro, dict):
+            email = primeiro.get('email', '') or ''
+            telefone = primeiro.get('phone', '') or ''
+    if not email and isinstance(contato_empresa, dict):
+        email = contato_empresa.get('email', '') or ''
+    if not telefone and isinstance(contato_empresa, dict):
+        telefone = contato_empresa.get('phone', '') or ''
+    
+    situacao = projeto.get('situacao', {}) if isinstance(projeto.get('situacao'), dict) else {}
+    situacao_nome = situacao.get('nome', '').upper() if isinstance(situacao, dict) else ''
+    situacao_id = situacao.get('id') if isinstance(situacao, dict) else None
+    
+    status_key = 'aberto'
+    if situacao_id == 2 or situacao_nome == 'GANHO':
+        status_key = 'ganho'
+    elif situacao_id == 3 or situacao_nome == 'PERDA':
+        status_key = 'perdido'
+    elif situacao_id in (1, 4) or situacao_nome in ('ANDAMENTO', 'ADIADO'):
+        status_key = 'aberto'
+    elif projeto.get('concluido'):
+        status_key = 'ganho'
+    elif projeto.get('pausado'):
+        status_key = 'perdido'
+    
+    etapa_nome = etapa.get('nome', 'Sem etapa') if isinstance(etapa, dict) else 'Sem etapa'
+    origem_obj = projeto.get('origem', {}) if isinstance(projeto.get('origem'), dict) else {}
+    origem_nome = origem_obj.get('nome', 'SULTS') if isinstance(origem_obj, dict) else 'SULTS'
+    name_slug = normalize_name(projeto.get('titulo') or projeto.get('nome'))
+    
+    return {
+        'id': projeto.get('id'),
+        'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
+        'email': email,
+        'email_norm': normalize_email(email),
+        'telefone': telefone,
+        'telefone_norm': normalize_phone(telefone),
+        'name_slug': name_slug,
+        'status_key': status_key,
+        'status_label': build_status_label(status_key),
+        'responsavel': responsavel_nome,
+        'responsavel_id': responsavel.get('id') if isinstance(responsavel, dict) else None,
+        'categoria': categoria_nome,
+        'etapa': etapa_nome,
+        'funil': funil_nome,
+        'origem': origem_nome
+    }
+
+def fetch_sults_leads_contacts(max_records=None, use_cache=True):
+    """Busca contatos da SULTS para conciliação."""
+    if not SULTS_AVAILABLE:
+        return {'success': False, 'error': 'Integração SULTS desabilitada', 'leads': [], 'total': 0}
+    
+    now = datetime.now()
+    if use_cache and SULTS_LEADS_CACHE['timestamp']:
+        delta = now - SULTS_LEADS_CACHE['timestamp']
+        if delta.total_seconds() < SULTS_CACHE_TTL_SECONDS and SULTS_LEADS_CACHE['leads']:
+            leads = SULTS_LEADS_CACHE['leads']
+            total = SULTS_LEADS_CACHE['total']
+            trimmed = leads[:max_records] if max_records else leads
+            return {'success': True, 'leads': trimmed, 'total': total, 'cached': True}
+    
+    try:
+        token = os.getenv('SULTS_API_TOKEN', '')
+        base_url = "https://api.sults.com.br/api/v1"
+        client = SultsAPIClient(token=token or None, base_url=base_url, auth_format='token')
+        projetos = client.get_negocios_franqueados()
+        if not projetos:
+            projetos = client.get_projetos()
+        
+        leads = []
+        for projeto in projetos or []:
+            lead_entry = _extract_sults_lead_entry(projeto)
+            if lead_entry:
+                leads.append(lead_entry)
+        
+        SULTS_LEADS_CACHE['timestamp'] = now
+        SULTS_LEADS_CACHE['leads'] = leads
+        SULTS_LEADS_CACHE['total'] = len(leads)
+        
+        trimmed = leads[:max_records] if max_records else leads
+        return {'success': True, 'leads': trimmed, 'total': len(leads), 'cached': False}
+    except Exception as e:
+        print(f"Erro ao buscar leads da SULTS para conciliação: {e}")
+        return {'success': False, 'error': str(e), 'leads': [], 'total': 0}
+
+def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, preview_limit=30):
+    """Concilia leads da planilha com dados da SULTS."""
+    if not SULTS_AVAILABLE:
+        return {
+            'available': False,
+            'message': 'Integração com a SULTS não está configurada neste servidor.'
+        }
+    
+    if not email_col and not phone_col:
+        return {
+            'available': False,
+            'message': 'Não foi possível conciliar com a SULTS: a planilha não possui colunas de e-mail ou telefone.'
+        }
+    
+    sults_data = fetch_sults_leads_contacts()
+    if not sults_data.get('success') or not sults_data.get('leads'):
+        return {
+            'available': False,
+            'message': 'Não foi possível obter dados da SULTS para conciliação.',
+            'error': sults_data.get('error')
+        }
+    
+    sults_leads = sults_data['leads']
+    total_sults = sults_data.get('total', len(sults_leads))
+    
+    email_lookup = {}
+    phone_lookup = {}
+    name_lookup = defaultdict(list)
+    name_compact_lookup = defaultdict(list)
+    token_lookup = defaultdict(list)
+    lead_by_id = {}
+    for lead in sults_leads:
+        lead_id = lead.get('id')
+        if lead_id:
+            lead_by_id[lead_id] = lead
+        email_norm = lead.get('email_norm')
+        phone_norm = lead.get('telefone_norm')
+        name_slug = lead.get('name_slug')
+        if email_norm:
+            email_lookup.setdefault(email_norm, []).append(lead)
+        if phone_norm:
+            phone_lookup.setdefault(phone_norm, []).append(lead)
+        if name_slug:
+            name_lookup[name_slug].append(lead)
+            compact_slug = name_slug.replace(' ', '')
+            if compact_slug:
+                name_compact_lookup[compact_slug].append(lead)
+            for token in name_slug.split():
+                if len(token) >= 3:
+                    token_lookup[token].append(lead)
+    
+    matched_ids = set()
+    matches_preview = []
+    matches_perdidos = []
+    matches_ganhos = []
+    status_counts = {'aberto': 0, 'perdido': 0, 'ganho': 0, 'outros': 0}
+    divergent = 0
+    
+    total_rows = len(df)
+    
+    for _, row in df.iterrows():
+        raw_email = row[email_col] if email_col in df.columns else ''
+        raw_phone = row[phone_col] if phone_col in df.columns else ''
+        raw_status = row[status_col] if status_col in df.columns else ''
+        raw_name = row[name_col] if name_col in df.columns else ''
+        
+        sheet_email = '' if pd.isna(raw_email) else str(raw_email).strip()
+        sheet_phone = '' if pd.isna(raw_phone) else str(raw_phone).strip()
+        sheet_status = '' if pd.isna(raw_status) else str(raw_status).strip()
+        sheet_name = '' if pd.isna(raw_name) else str(raw_name).strip()
+        
+        email_norm = normalize_email(sheet_email) if email_col else ''
+        phone_norm = normalize_phone(sheet_phone) if phone_col else ''
+        sheet_status_key = normalize_status_key(sheet_status) if sheet_status else 'outros'
+        sheet_slug = normalize_name(sheet_name) if sheet_name else ''
+        
+        candidate = None
+        match_source = None
+        if email_norm and email_norm in email_lookup:
+            candidate = email_lookup[email_norm][0]
+            match_source = 'email'
+        elif phone_norm and phone_norm in phone_lookup:
+            candidate = phone_lookup[phone_norm][0]
+            match_source = 'telefone'
+        elif sheet_slug:
+            if sheet_slug in name_lookup:
+                candidate = name_lookup[sheet_slug][0]
+                match_source = 'nome'
+            else:
+                compact_slug = sheet_slug.replace(' ', '')
+                if compact_slug and compact_slug in name_compact_lookup:
+                    candidate = name_compact_lookup[compact_slug][0]
+                    match_source = 'nome_compacto'
+                else:
+                    tokens = [tok for tok in sheet_slug.split() if len(tok) >= 3]
+                    potential_ids = None
+                    for token in tokens:
+                        token_ids = {lead.get('id') for lead in token_lookup.get(token, []) if lead.get('id')}
+                        if not token_ids:
+                            continue
+                        if potential_ids is None:
+                            potential_ids = token_ids
+                        else:
+                            potential_ids &= token_ids
+                        if potential_ids and len(potential_ids) == 1:
+                            break
+                    if potential_ids:
+                        candidate = lead_by_id.get(next(iter(potential_ids)))
+                        match_source = 'nome_tokens'
+                    elif tokens:
+                        single_match = None
+                        for token in tokens:
+                            matches = token_lookup.get(token, [])
+                            if len(matches) == 1:
+                                single_match = matches[0]
+                                break
+                        if single_match:
+                            candidate = single_match
+                            match_source = 'nome_token'
+                    if not candidate and sheet_slug:
+                        candidate = next(
+                            (leads_list[0] for slug_key, leads_list in name_lookup.items()
+                             if sheet_slug in slug_key or slug_key in sheet_slug),
+                            None
+                        )
+                        if candidate:
+                            match_source = 'nome_parcial'
+        
+        if not candidate:
+            continue
+        
+        matched_ids.add(candidate.get('id'))
+        status_key = candidate.get('status_key', 'outros')
+        status_counts[status_key] = status_counts.get(status_key, 0) + 1
+        
+        if sheet_status and sheet_status_key and sheet_status_key != status_key:
+            divergent += 1
+        
+        match_entry = {
+            'lead': str(sheet_name) if sheet_name else candidate.get('nome'),
+            'sheet_status': sheet_status or 'Sem status',
+            'sults_status': candidate.get('status_label'),
+            'responsavel': candidate.get('responsavel'),
+            'email': sheet_email or candidate.get('email') or '-',
+            'telefone': sheet_phone or candidate.get('telefone') or '-',
+            'match_source': match_source,
+            'sults_id': candidate.get('id'),
+            'status_key': status_key,
+            'divergente': bool(sheet_status and sheet_status_key and sheet_status_key != status_key),
+            'sults_origem': candidate.get('origem')
+        }
+        
+        matches_preview.append(match_entry)
+        
+        if status_key == 'perdido':
+            matches_perdidos.append(match_entry)
+        elif status_key == 'ganho':
+            matches_ganhos.append(match_entry)
+    
+    total_matched = sum(status_counts.values())
+    summary = {
+        'total_planilha': total_rows,
+        'total_sults': total_sults,
+        'matched': total_matched,
+        'unmatched_planilha': total_rows - total_matched,
+        'unmatched_sults': max(total_sults - len(matched_ids), 0),
+        'status_counts': status_counts,
+        'divergent': divergent
+    }
+    
+    if total_matched == 0:
+        return {
+            'available': False,
+            'message': 'Nenhum lead da planilha foi conciliado com a SULTS (tentamos e-mail, telefone e nome).',
+            'summary': summary
+        }
+    
+    return {
+        'available': True,
+        'message': f'{total_matched} leads conciliados com a SULTS.',
+        'summary': summary,
+        'matches': matches_preview,
+        'matches_perdidos': matches_perdidos,
+        'matches_ganhos': matches_ganhos,
+        'last_sync': datetime.now().isoformat(),
+        'source': 'SULTS API'
+    }
+
 def analyze_leads_dataframe(df):
     """Gera análises a partir de uma planilha de leads"""
     df = df.copy()
@@ -614,6 +1275,8 @@ def analyze_leads_dataframe(df):
     source_col = detect_lead_source_column(df)
     owner_col = detect_lead_owner_column(df)
     name_col = detect_lead_name_column(df)
+    email_col = detect_lead_email_column(df)
+    phone_col = detect_lead_phone_column(df)
     
     if source_col:
         def _normalize_source(value):
@@ -696,10 +1359,15 @@ def analyze_leads_dataframe(df):
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
 
     if source_col:
-        source_series = df[source_col].astype(str).str.strip()
+        source_series = df[source_col].astype(str).str.strip().apply(normalize_origin_label)
+        source_counts = source_series.value_counts().head(15)
+        source_distribution = [
+            {'label': origem, 'value': int(count)}
+            for origem, count in source_counts.items()
+        ]
 
     if owner_col:
-        owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip()
+        owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip().apply(normalize_owner_label)
         owner_counts = owner_series.value_counts().head(15)
         owner_distribution = [
             {'label': owner, 'value': int(count)}
@@ -770,10 +1438,56 @@ def analyze_leads_dataframe(df):
         'source': source_distribution,
         'owner': owner_distribution
     }
+
+    sults_crosscheck = crosscheck_leads_with_sults(
+        df,
+        name_col=name_col,
+        status_col=status_col,
+        email_col=email_col,
+        phone_col=phone_col
+    )
+    if sults_crosscheck.get('available'):
+        summary = sults_crosscheck.get('summary', {})
+        status_counts = summary.get('status_counts', {})
+        if status_counts:
+            sults_status_distribution = []
+            for key in ['aberto', 'perdido', 'ganho', 'outros']:
+                value = status_counts.get(key)
+                if value:
+                    sults_status_distribution.append({
+                        'label': build_status_label(key),
+                        'value': int(value)
+                    })
+            distributions['sults_status'] = sults_status_distribution
+            kpis['sults_status_counts'] = status_counts
+            kpis['sults_matched'] = summary.get('matched', 0)
+            kpis['sults_divergent'] = summary.get('divergent', 0)
+            kpis['sults_source'] = sults_crosscheck.get('source', 'SULTS API')
+        matches_for_fallback = sults_crosscheck.get('matches') or []
+        if matches_for_fallback:
+            origem_counts = {}
+            for entry in matches_for_fallback:
+                origem = normalize_origin_label(entry.get('sults_origem'))
+                origem_counts[origem] = origem_counts.get(origem, 0) + 1
+            source_distribution = [
+                {'label': label, 'value': count}
+                for label, count in sorted(origem_counts.items(), key=lambda x: x[1], reverse=True)
+            ]
+            owner_counts = {}
+            for entry in matches_for_fallback:
+                owner_label = normalize_owner_label(entry.get('responsavel'))
+                owner_counts[owner_label] = owner_counts.get(owner_label, 0) + 1
+            owner_distribution = [
+                {'label': label, 'value': count}
+                for label, count in sorted(owner_counts.items(), key=lambda x: x[1], reverse=True)
+            ]
     
     df = df.drop(columns=['_lead_date_dt'])
     if source_col:
         df[source_col] = df[source_col].replace(r'^\s*$', 'organico', regex=True).fillna('organico')
+
+    source_total = sum(item['value'] for item in source_distribution)
+    owner_summary, owner_total = summarize_distribution(owner_distribution)
 
     return {
         'columns': list(df.columns),
@@ -783,12 +1497,23 @@ def analyze_leads_dataframe(df):
         'source_column': source_col,
         'owner_column': owner_col,
         'name_column': name_col,
+        'email_column': email_col,
+        'phone_column': phone_col,
         'kpis': kpis,
-        'distributions': distributions,
+        'distributions': {
+            'status': status_distribution,
+            'source': source_distribution,
+            'owner': owner_summary
+        },
+        'totals': {
+            'source': source_total,
+            'owner': owner_total
+        },
         'timeline': timeline,
         'insights': insights,
         'recent_leads': clean_dataframe_for_json(recent_preview),
-        'raw_data': clean_dataframe_for_json(df)
+        'raw_data': clean_dataframe_for_json(df),
+        'sults_crosscheck': sults_crosscheck
     }
 
 @app.route('/')
@@ -1285,24 +2010,76 @@ def google_ads_upload():
         if not credentials:
             return jsonify({'error': 'Credenciais do Google Drive não encontradas'}), 500
         
-        # Baixa arquivo do Google Drive
-        file_content, file_name = download_file_from_drive(file_id, credentials)
-        if not file_content:
-            return jsonify({'error': 'Erro ao baixar arquivo do Google Drive'}), 500
+        preferred_tabs = ['Controle Google ADS', 'Controle Google ADS 2']
+        preferred_targets = [normalize_sheet_title(name) for name in preferred_tabs]
+        sheets_data = {}
+        leads_df = None
+        funnels_df = None
+        file_name = 'Planilha Google Ads'
+        sheet_info = {}
         
-        # Simula upload do arquivo
-        print(f"Upload automático do Google Ads recebido: {file_name}")
-        
-        # Processa o arquivo como se fosse um upload normal
         try:
-            # Tenta ler a aba específica "Controle Google ADS", se não encontrar, lê a primeira
-            try:
-                df = pd.read_excel(io.BytesIO(file_content), sheet_name='Controle Google ADS')
-                print(f"Arquivo do Google Ads lido com sucesso (aba 'Controle Google ADS'): {df.shape}")
-            except:
-                df = pd.read_excel(io.BytesIO(file_content))
-                print(f"Arquivo do Google Ads lido com sucesso (primeira aba): {df.shape}")
+            sheets_data, sheet_info = load_google_ads_sheet(file_id, credentials, preferred_sheets=preferred_tabs)
+            loaded_tabs = ', '.join(sheet_info.get('loaded_sheets', []))
+            file_name = f"Google Ads ({loaded_tabs}) via Sheets API"
+            print(f"[GOOGLE ADS] Planilha carregada via Sheets API: {loaded_tabs}")
+        except Exception as sheets_error:
+            print(f"[GOOGLE ADS] Falha ao ler via Sheets API: {sheets_error}")
+            # Fallback: baixar arquivo convertido (XLSX) do Drive
+            file_content, downloaded_name = download_file_from_drive(file_id, credentials)
+            if not file_content:
+                return jsonify({'error': 'Erro ao baixar arquivo do Google Drive'}), 500
             
+            file_name = downloaded_name or file_name
+            print(f"Upload automático do Google Ads recebido: {file_name}")
+            
+            try:
+                sheets_dict = pd.read_excel(io.BytesIO(file_content), sheet_name=None)
+            except Exception as read_error:
+                raise ValueError(f"Não foi possível ler o arquivo baixado: {read_error}")
+            
+            frames_map = {}
+            sheet_stats = []
+            for sheet_name, sheet_df in sheets_dict.items():
+                normalized_name = normalize_sheet_title(sheet_name)
+                if normalized_name not in preferred_targets:
+                    continue
+                cleaned_df = sheet_df.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
+                if cleaned_df.empty:
+                    continue
+                frames_map[sheet_name] = cleaned_df
+                sheet_stats.append({'name': sheet_name, 'rows': int(cleaned_df.shape[0]), 'columns': int(cleaned_df.shape[1])})
+                print(f"[GOOGLE ADS][Download] Aba '{sheet_name}' carregada -> linhas: {cleaned_df.shape[0]}, colunas: {cleaned_df.shape[1]}")
+            
+            if not frames_map:
+                raise ValueError("Nenhuma das abas solicitadas possuía dados válidos no arquivo baixado do Google Ads.")
+            
+            sheets_data = frames_map
+            sheet_info = {
+                'primary_sheets': list(frames_map.keys()),
+                'sheet_stats': sheet_stats,
+                'sheet_count': len(frames_map),
+                'loaded_sheets': list(frames_map.keys())
+            }
+            print(f"Arquivo do Google Ads lido via download: {[k for k in frames_map.keys()]}")
+        
+        def pick_sheet(target_name):
+            normalized_target = normalize_sheet_title(target_name)
+            for title, data in sheets_data.items():
+                if normalize_sheet_title(title) == normalized_target:
+                    return data
+            return None
+        
+        leads_df = pick_sheet('Controle Google ADS')
+        funnels_df = pick_sheet('Controle Google ADS 2')
+        
+        if leads_df is None or leads_df.empty:
+            return jsonify({'error': "Aba 'Controle Google ADS' não encontrada ou está vazia"}), 500
+        
+        df = leads_df.copy().reset_index(drop=True)
+        
+        # Processa o DataFrame independentemente da origem
+        try:
             print("Colunas da planilha:", list(df.columns))
             
             # Processa APENAS as colunas necessárias: Dia, MQL?, Term
@@ -1353,8 +2130,14 @@ def google_ads_upload():
             total_mqls = df[leads_cols['mql']].sum()
             kpis['total_leads'] = int(total_leads) if not pd.isna(total_leads) else 0
             kpis['total_mqls'] = int(total_mqls) if not pd.isna(total_mqls) else 0
-            kpis['investimento_total'] = 0.0  # Não temos coluna de investimento
-            kpis['custo_por_mql'] = 0.0
+            
+            funnels_analysis = analyze_google_ads_funnels(funnels_df)
+            total_investimento = funnels_analysis['totals']['investimento']
+            kpis['investimento_total'] = round(total_investimento, 2)
+            if kpis['total_mqls'] > 0 and total_investimento > 0:
+                kpis['custo_por_mql'] = round(total_investimento / kpis['total_mqls'], 2)
+            else:
+                kpis['custo_por_mql'] = 0.0
             
             # Análise de criativos usando coluna Term
             creative_analysis = {}
@@ -1474,6 +2257,7 @@ def google_ads_upload():
                 'data': {
                     'columns': list(df.columns),
                     'total_rows': len(df),
+                    'sheet_info': sheet_info,
                     'date_column': date_col,
                     'creative_columns': creative_cols,
                     'cost_columns': cost_cols,
@@ -1481,6 +2265,8 @@ def google_ads_upload():
                     'summary': summary_data,
                     'kpis': kpis,
                     'creative_analysis': creative_analysis,
+                    'funnels_analysis': funnels_analysis,
+                    'funnels_raw_data': clean_dataframe_for_json(funnels_df) if funnels_df is not None else [],
                     'raw_data': clean_dataframe_for_json(df)
                 }
             }
@@ -2032,7 +2818,9 @@ def verificar_sults_leads():
                     'id': projeto.get('id'),
                     'nome': projeto.get('titulo') or projeto.get('nome', 'Sem nome'),
                     'email': email,
+                    'email_norm': normalize_email(email),
                     'telefone': telefone,
+                    'telefone_norm': normalize_phone(telefone),
                     'responsavel': responsavel_nome,
                     'responsavel_id': responsavel_id,
                     'unidade': unidade_nome or (contato_empresa.get('nomeFantasia', '') if isinstance(contato_empresa, dict) else ''),
@@ -2162,6 +2950,10 @@ def verificar_sults_leads():
                     'leads_por_unidade': leads_por_unidade
                 }
             }
+            
+            SULTS_LEADS_CACHE['timestamp'] = datetime.now()
+            SULTS_LEADS_CACHE['leads'] = leads_abertos + leads_perdidos + leads_ganhos
+            SULTS_LEADS_CACHE['total'] = len(SULTS_LEADS_CACHE['leads'])
             
             return jsonify({
                 'success': True,
@@ -2362,6 +3154,124 @@ def update_negocio_responsavel():
         return jsonify({
             'success': False,
             'error': f'Erro ao atualizar responsável: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/update-etapa', methods=['POST'])
+def update_negocio_etapa():
+    """Atualiza a fase/etapa de um negócio na SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Dados não fornecidos'}), 400
+        
+        negocio_id = data.get('negocio_id')
+        etapa_id = data.get('etapa_id')
+        
+        if not negocio_id or not etapa_id:
+            return jsonify({'success': False, 'error': 'negocio_id e etapa_id são obrigatórios'}), 400
+        
+        client = SultsAPIClient()
+        result = client.update_negocio_etapa(int(negocio_id), int(etapa_id))
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'Fase atualizada com sucesso',
+                'data': result.get('data', {})
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao atualizar fase')
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao atualizar fase: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/add-anotacao', methods=['POST'])
+def add_negocio_anotacao():
+    """Adiciona uma anotação/comentário a um negócio na SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Dados não fornecidos'}), 400
+        
+        negocio_id = data.get('negocio_id')
+        anotacao = data.get('anotacao')
+        usuario_id = data.get('usuario_id')
+        
+        if not negocio_id or not anotacao:
+            return jsonify({'success': False, 'error': 'negocio_id e anotacao são obrigatórios'}), 400
+        
+        client = SultsAPIClient()
+        result = client.add_negocio_anotacao(int(negocio_id), anotacao, usuario_id)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'Anotação adicionada com sucesso',
+                'data': result.get('data', {})
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao adicionar anotação')
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao adicionar anotação: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/etapas', methods=['GET'])
+def get_etapas_disponiveis():
+    """Busca as etapas/fases disponíveis para um funil"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        funil_id = request.args.get('funil_id', 1, type=int)
+        client = SultsAPIClient()
+        etapas = client.get_etapas_disponiveis(funil_id)
+        
+        return jsonify({
+            'success': True,
+            'data': etapas
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar etapas: {str(e)}'
+        }), 500
+
+@app.route('/api/sults/usuarios', methods=['GET'])
+def get_usuarios_disponiveis():
+    """Busca os usuários/responsáveis disponíveis na SULTS"""
+    if not SULTS_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Integração SULTS não disponível'}), 503
+    
+    try:
+        client = SultsAPIClient()
+        usuarios = client.get_usuarios_disponiveis()
+        
+        return jsonify({
+            'success': True,
+            'data': usuarios
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar usuários: {str(e)}'
         }), 500
 
 if __name__ == '__main__':

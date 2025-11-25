@@ -71,11 +71,11 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 - Custo por MQL (CPMQL)
 - Leads/MQLs por aparição
 - Ranking de criativos
-- Investimento da última semana
+- Investimento por funil (Controle Google ADS 2)
 
 ### Visualizações
 - Gráficos interativos (Chart.js)
-- Investimento diário da última semana (formato DD/MM/YYYY)
+- Investimento por funil + tabela detalhada (Controle Google ADS 2)
 - Evolução temporal de criativos
 - Distribuição de leads por data
 - Performance de conversão
@@ -88,6 +88,8 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 - Combinação automática de todas as abas com dados (suporta milhares de registros)
 - KPIs automáticos (entradas recentes, conversões, perdas, responsáveis)
 - Distribuição dos principais status, origens e atendentes
+- Panorama visual de origens e responsáveis com percentuais e fallback direto da SULTS
+- Conciliação automática dos leads da planilha com a SULTS (status em andamento, ganhos e perdidos) durante o upload
 - Gráficos de timeline, status e fontes com Chart.js
 - Tabelas com últimos leads atualizados e base completa com busca e paginação
 - Metadados exibindo resumo da planilha (quantidade de abas e registros)
@@ -99,6 +101,9 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 - Exportação inteligente de Google Sheets
 - Suporte para múltiplas planilhas
 - Leitura de abas específicas (ex: "Controle Google ADS")
+- Leitura direta da planilha de Google Ads via Google Sheets API (fallback automático para XLSX quando necessário)
+- Combinação automática e exclusiva das abas `Controle Google ADS` e `Controle Google ADS 2`
+- Aba `Controle Google ADS` alimenta as métricas de leads/MQLs e a aba `Controle Google ADS 2` fornece investimento, cliques e impressões por funil exibidos no dashboard
 
 ### Integração SULTS API
 - Sincronização de leads com a plataforma SULTS
@@ -106,6 +111,11 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 - Detecção automática de MQLs diretamente das etiquetas retornadas pelo endpoint `/expansao/negocio`
 - Busca de chamados e status de leads
 - Consulta de unidades e projetos
+- **Gestão de Leads:**
+  - Atualizar responsável do lead diretamente no dashboard
+  - Mudar fase/etapa do lead (ex: de MQL para Conexão)
+  - Adicionar anotações/comentários para cada lead
+  - Buscar etapas disponíveis e usuários/responsáveis
 - Endpoints disponíveis:
   - `GET /api/sults/verificar-leads` - Verifica leads abertos/perdidos (recomendado)
   - `GET /api/sults/test` - Testa conexão com a API
@@ -113,6 +123,11 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
   - `GET /api/sults/leads-status` - Busca leads por status (aberto, perdido, ganho)
   - `GET /api/sults/chamados` - Busca chamados (parâmetros: `date_from`, `date_to`)
   - `POST /api/sults/sync-lead` - Sincroniza um lead com a SULTS
+  - `POST /api/sults/update-responsavel` - Atualiza o responsável de um negócio
+  - `POST /api/sults/update-etapa` - Atualiza a fase/etapa de um negócio
+  - `POST /api/sults/add-anotacao` - Adiciona uma anotação a um negócio
+  - `GET /api/sults/etapas` - Busca etapas disponíveis (parâmetro: `funil_id`)
+  - `GET /api/sults/usuarios` - Busca usuários/responsáveis disponíveis
 - Token configurável via variável de ambiente `SULTS_API_TOKEN`
 - Documentação da API: https://developers.sults.com.br/
 
@@ -260,6 +275,8 @@ docker compose up
 ### Erro ao carregar Google Ads
 - Verifique se o ID da planilha no `.env` está correto
 - Certifique-se de que a aba "Controle Google ADS" existe
+- Certifique-se que as abas "Controle Google ADS" e "Controle Google ADS 2" existem (apenas elas são consideradas)
+- Confirme que o service account possui permissão de leitura na planilha e que a API do Google Sheets está habilitada
 - Verifique os logs para detalhes específicos
 
 ## 📝 Licença

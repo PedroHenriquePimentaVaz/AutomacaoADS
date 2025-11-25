@@ -212,11 +212,33 @@
                                     <span class="metric-value" id="custoPorMQL">-</span>
                                 </div>
                             </div>
+                            <div class="metric-row">
+                                <div class="metric-item">
+                                    <span class="metric-label">Investimento (Funis):</span>
+                                    <span class="metric-value" id="funnelsInvestmentTotal">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Cliques Totais:</span>
+                                    <span class="metric-value" id="funnelsClicksTotal">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Impressões Totais:</span>
+                                    <span class="metric-value" id="funnelsImpressionsTotal">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">CTR Médio:</span>
+                                    <span class="metric-value" id="funnelsCtrTotal">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">CPC Médio:</span>
+                                    <span class="metric-value" id="funnelsCpcTotal">-</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="charts-section">
                             <div class="chart-card">
                                 <div class="chart-header">
-                                    <h3>Investimento da Última Semana</h3>
+                                    <h3>Investimento por Funil (Controle Google Ads 2)</h3>
                                     <div class="chart-actions">
                                         <button class="btn btn-sm btn-outline" onclick="exportChart('costs')">
                                             <i class="fas fa-download"></i>
@@ -242,6 +264,30 @@
                                 <div class="chart-content">
                                     <canvas id="conversionChart"></canvas>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="table-card">
+                            <div class="table-header">
+                                <h3>Detalhamento por Funil (Controle Google ADS 2)</h3>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Funil</th>
+                                            <th class="number-cell">Impressões</th>
+                                            <th class="number-cell">Cliques</th>
+                                            <th class="number-cell">Investimento</th>
+                                            <th class="number-cell">CTR</th>
+                                            <th class="number-cell">CPC</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="funnelsTableBody">
+                                        <tr>
+                                            <td class="empty-cell" colspan="6">Nenhum dado carregado.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -491,6 +537,83 @@
                         </div>
                     </div>
 
+                </div>
+
+                <div class="analysis-section" id="sultsValidationSection">
+                    <div class="section-header">
+                        <h2><i class="fas fa-link"></i> Validação com SULTS</h2>
+                    </div>
+                    <div class="table-actions" style="justify-content:flex-end;">
+                        <input type="text" id="sultsSearchInput" class="search-input" placeholder="Buscar lead conciliado...">
+                    </div>
+                    <div class="info-card" id="sultsValidationSummary">
+                        <p>Aguardando conciliação com a SULTS...</p>
+                    </div>
+                    <div class="sults-filters">
+                        <label class="filter-checkbox">
+                            <input type="checkbox" class="sults-status-filter" value="aberto" checked>
+                            Em andamento
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" class="sults-status-filter" value="perdido" checked>
+                            Perdidos
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" class="sults-status-filter" value="ganho" checked>
+                            Ganhos
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" class="sults-status-filter" value="outros" checked>
+                            Outros
+                        </label>
+                        <label class="filter-checkbox divergent-toggle">
+                            <input type="checkbox" id="sultsDivergentFilter">
+                            Apenas divergentes
+                        </label>
+                    </div>
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h3>Leads conciliados</h3>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Lead</th>
+                                        <th>E-mail</th>
+                                        <th>Telefone</th>
+                                        <th>Status (Planilha)</th>
+                                        <th>Status (SULTS)</th>
+                                        <th>Responsável</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sultsValidationTableBody">
+                                    <tr><td class="empty-cell" colspan="6">Sem dados para conciliar.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h3>Ganhos e Perdidos sincronizados</h3>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Lead</th>
+                                        <th>E-mail</th>
+                                        <th>Telefone</th>
+                                        <th>Status SULTS</th>
+                                        <th>Responsável</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sultsWonLostBody">
+                                    <tr><td class="empty-cell" colspan="5">Sem leads ganhos ou perdidos sincronizados.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="analysis-section">

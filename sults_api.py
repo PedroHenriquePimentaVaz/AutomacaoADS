@@ -499,4 +499,127 @@ class SultsAPIClient:
                 'success': False,
                 'error': str(e)
             }
+    
+    def update_negocio_etapa(self, negocio_id: int, etapa_id: int) -> Dict:
+        """Atualiza a fase/etapa de um negócio na SULTS"""
+        endpoint = f"/expansao/negocio/{negocio_id}"
+        
+        update_data = {
+            'etapaId': etapa_id
+        }
+        
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json;charset=UTF-8'
+        
+        try:
+            url = f"{self.BASE_URL}{endpoint}"
+            response = requests.put(url, json=update_data, headers=headers, timeout=10)
+            
+            if response.status_code in [200, 201, 204]:
+                try:
+                    return {
+                        'success': True,
+                        'data': response.json() if response.content else {}
+                    }
+                except:
+                    return {
+                        'success': True,
+                        'data': {}
+                    }
+            else:
+                response = requests.patch(url, json=update_data, headers=headers, timeout=10)
+                if response.status_code in [200, 201, 204]:
+                    try:
+                        return {
+                            'success': True,
+                            'data': response.json() if response.content else {}
+                        }
+                    except:
+                        return {
+                            'success': True,
+                            'data': {}
+                        }
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Erro {response.status_code}: {response.text[:200]}'
+                    }
+        except Exception as e:
+            print(f"Erro ao atualizar etapa do negócio {negocio_id}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def add_negocio_anotacao(self, negocio_id: int, anotacao: str, usuario_id: Optional[int] = None) -> Dict:
+        """Adiciona uma anotação/comentário a um negócio na SULTS"""
+        endpoint = f"/expansao/negocio/{negocio_id}/anotacao"
+        
+        anotacao_data = {
+            'texto': anotacao,
+            'data': datetime.now().isoformat()
+        }
+        
+        if usuario_id:
+            anotacao_data['usuarioId'] = usuario_id
+        
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json;charset=UTF-8'
+        
+        try:
+            url = f"{self.BASE_URL}{endpoint}"
+            response = requests.post(url, json=anotacao_data, headers=headers, timeout=10)
+            
+            if response.status_code in [200, 201, 204]:
+                try:
+                    return {
+                        'success': True,
+                        'data': response.json() if response.content else {}
+                    }
+                except:
+                    return {
+                        'success': True,
+                        'data': {}
+                    }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Erro {response.status_code}: {response.text[:200]}'
+                }
+        except Exception as e:
+            print(f"Erro ao adicionar anotação ao negócio {negocio_id}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_etapas_disponiveis(self, funil_id: Optional[int] = 1) -> List[Dict]:
+        """Busca as etapas/fases disponíveis para um funil"""
+        endpoint = f"/expansao/funil/{funil_id}/etapas"
+        
+        try:
+            response = self._make_request('GET', endpoint)
+            if isinstance(response, list):
+                return response
+            elif isinstance(response, dict) and 'data' in response:
+                return response['data']
+            return []
+        except:
+            return []
+    
+    def get_usuarios_disponiveis(self) -> List[Dict]:
+        """Busca os usuários/responsáveis disponíveis na SULTS"""
+        endpoints_to_try = ["/usuarios", "/users", "/usuario", "/user"]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                response = self._make_request('GET', endpoint)
+                if isinstance(response, list):
+                    return response
+                elif isinstance(response, dict) and 'data' in response:
+                    return response['data']
+            except:
+                continue
+        
+        return []
 

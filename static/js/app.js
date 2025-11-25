@@ -12,6 +12,13 @@ let filteredData = null;
 let leadSourceChart = null;
 let leadOwnerChart = null;
 let filteredLeadsData = null;
+let sultsStatusFilters = {
+    aberto: true,
+    perdido: true,
+    ganho: true,
+    outros: true
+};
+let sultsOnlyDivergent = false;
 
 // DOM Elements
 const uploadSection = document.getElementById('uploadSection');
@@ -32,7 +39,18 @@ const leadsRecentHead = document.getElementById('leadsRecentHead');
 const leadsRecentBody = document.getElementById('leadsRecentBody');
 const leadSearchInput = document.getElementById('leadSearchInput');
 const leadRowsSelect = document.getElementById('leadRowsSelect');
+const sultsSearchInput = document.getElementById('sultsSearchInput');
 let autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
+
+function formatCurrency(value) {
+    const amount = typeof value === 'number' ? value : parseFloat(value) || 0;
+    return 'R$ ' + amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatNumber(value) {
+    const amount = typeof value === 'number' ? value : parseFloat(value) || 0;
+    return amount.toLocaleString('pt-BR');
+}
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
@@ -53,6 +71,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeAutoUpload();
     initializeLeadsUpload();
     initializeLeadControls();
+    initializeSultsFilters();
     initializeSultsData();
 });
 
@@ -120,6 +139,36 @@ function showLeadsDashboard() {
     const backBtn = document.getElementById('backToStartBtn');
     if (backBtn) {
         backBtn.style.display = 'block';
+    }
+}
+
+function initializeSultsFilters() {
+    if (sultsSearchInput) {
+        sultsSearchInput.addEventListener('input', () => {
+            if (filteredLeadsData?.sults_crosscheck) {
+                renderSultsValidation();
+            }
+        });
+    }
+    
+    document.querySelectorAll('.sults-status-filter').forEach(cb => {
+        cb.addEventListener('change', (event) => {
+            const { value, checked } = event.target;
+            sultsStatusFilters[value] = checked;
+            if (filteredLeadsData?.sults_crosscheck) {
+                renderSultsValidation();
+            }
+        });
+    });
+    
+    const divergentToggle = document.getElementById('sultsDivergentFilter');
+    if (divergentToggle) {
+        divergentToggle.addEventListener('change', (event) => {
+            sultsOnlyDivergent = event.target.checked;
+            if (filteredLeadsData?.sults_crosscheck) {
+                renderSultsValidation();
+            }
+        });
     }
 }
 
@@ -284,6 +333,7 @@ function renderLeadsDashboard() {
     
     renderLeadsKPIs();
     renderLeadCharts();
+    renderSultsValidation();
     renderLeadDistributions();
     renderConversionRates();
     renderLeadRecentTable();
@@ -296,6 +346,9 @@ function renderLeadsKPIs() {
     if (!leadsKpisGrid || !filteredLeadsData) return;
     
     const kpis = filteredLeadsData.kpis || {};
+    const sultsValidation = filteredLeadsData.sults_crosscheck || null;
+    const sultsSummary = sultsValidation?.summary || null;
+    const sultsStatusCounts = sultsSummary?.status_counts || null;
     leadsKpisGrid.innerHTML = '';
     
     if (kpis.total_leads !== undefined) {
@@ -305,17 +358,6 @@ function renderLeadsKPIs() {
                 kpis.total_leads.toLocaleString(),
                 'fas fa-users',
                 '#10B981'
-            )
-        );
-    }
-    
-    if (kpis.leads_last_30_days !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Entradas (30 dias)',
-                kpis.leads_last_30_days.toLocaleString(),
-                'fas fa-calendar-plus',
-                '#3B82F6'
             )
         );
     }
@@ -331,32 +373,10 @@ function renderLeadsKPIs() {
         );
     }
     
-    if (kpis.leads_won !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Leads Convertidos',
-                kpis.leads_won.toLocaleString(),
-                'fas fa-trophy',
-                '#8B5CF6'
-            )
-        );
-    }
-    
-    if (kpis.leads_lost !== undefined) {
-        leadsKpisGrid.appendChild(
-            createKPICard(
-                'Leads Perdidos',
-                kpis.leads_lost.toLocaleString(),
-                'fas fa-user-slash',
-                '#EF4444'
-            )
-        );
-    }
-    
     if (kpis.tag_mqls !== undefined && kpis.tag_mqls > 0) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'MQLs (Etiqueta MQL)',
+                'MQLs',
                 kpis.tag_mqls.toLocaleString(),
                 'fas fa-user-check',
                 '#10B981'
@@ -367,12 +387,35 @@ function renderLeadsKPIs() {
     if (kpis.mql_to_lead_rate !== undefined) {
         leadsKpisGrid.appendChild(
             createKPICard(
-                'Taxa de MQL para Lead',
+                'Taxa MQL → Lead',
                 `${kpis.mql_to_lead_rate.toFixed(1)}%`,
                 'fas fa-percentage',
                 '#001c54'
             )
         );
+    }
+    
+    if (sultsValidation) {
+        if (sultsValidation.available && sultsStatusCounts) {
+            const matched = formatNumber(sultsSummary.matched || 0);
+            const openCount = formatNumber(sultsStatusCounts.aberto || 0);
+            
+            leadsKpisGrid.appendChild(
+                createKPICard('Conciliados (SULTS)', matched, 'fas fa-link', '#0EA5E9')
+            );
+            leadsKpisGrid.appendChild(
+                createKPICard('Em andamento (SULTS)', openCount, 'fas fa-hourglass-half', '#2563EB')
+            );
+        } else if (sultsValidation.message) {
+            leadsKpisGrid.appendChild(
+                createKPICard(
+                    'SULTS',
+                    sultsValidation.message,
+                    'fas fa-info-circle',
+                    '#6B7280'
+                )
+            );
+        }
     }
     
 }
@@ -395,17 +438,25 @@ function renderLeadCharts() {
         sourceCardsContainer.innerHTML = '';
         const sourceData = distributions.source || [];
         if (sourceData && sourceData.length > 0) {
-            // Ordenar por quantidade (maior para menor)
-            const sorted = sourceData
-                .map(item => ({ label: item.label || item.name || 'Sem origem', value: item.value || 0 }))
+            const sourceTotal = (filteredLeadsData.totals && filteredLeadsData.totals.source) ||
+                sourceData.reduce((sum, item) => sum + (item.value || 0), 0);
+            const sortedSources = sourceData
+                .map(item => ({
+                    label: item.label || item.name || 'Sem origem',
+                    value: Number(item.value) || 0
+                }))
                 .sort((a, b) => b.value - a.value);
             
-            sorted.forEach(item => {
+            sortedSources.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'distribution-item';
+                const percentage = sourceTotal ? ((item.value / sourceTotal) * 100).toFixed(1) : null;
                 card.innerHTML = `
                     <span class="distribution-label">${item.label}</span>
-                    <span class="distribution-value">${item.value}</span>
+                    <span class="distribution-value">
+                        ${formatNumber(item.value || 0)}
+                        ${percentage !== null ? `<small>${percentage}%</small>` : ''}
+                    </span>
                 `;
                 sourceCardsContainer.appendChild(card);
             });
@@ -418,21 +469,24 @@ function renderLeadCharts() {
     const ownerCardsContainer = document.getElementById('leadOwnerCards');
     if (ownerCardsContainer) {
         ownerCardsContainer.innerHTML = '';
-        if (estatisticas.leads_por_responsavel && typeof estatisticas.leads_por_responsavel === 'object' && Object.keys(estatisticas.leads_por_responsavel).length > 0) {
-            const responsavelData = estatisticas.leads_por_responsavel;
-            const labels = Object.keys(responsavelData);
-            const values = Object.values(responsavelData);
-            
-            // Ordenar por quantidade (maior para menor)
-            const sorted = labels.map((label, index) => ({ label, value: values[index] }))
-                .sort((a, b) => b.value - a.value);
-            
-            sorted.forEach(item => {
+        const ownerData = distributions.owner || [];
+        if (ownerData && ownerData.length > 0) {
+            const ownerTotal = (filteredLeadsData.totals && filteredLeadsData.totals.owner) ||
+                ownerData.reduce((sum, item) => sum + (item.value || 0), 0);
+            ownerData.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'distribution-item';
+                const percentage = typeof item.percentage === 'number'
+                    ? item.percentage
+                    : ownerTotal
+                        ? ((item.value || 0) / ownerTotal) * 100
+                        : null;
                 card.innerHTML = `
-                    <span class="distribution-label">${item.label}</span>
-                    <span class="distribution-value">${item.value}</span>
+                    <span class="distribution-label">${item.label || 'Responsável'}</span>
+                    <span class="distribution-value">
+                        ${formatNumber(item.value || 0)}
+                        ${percentage !== null ? `<small>${percentage.toFixed(1)}%</small>` : ''}
+                    </span>
                 `;
                 ownerCardsContainer.appendChild(card);
             });
@@ -440,6 +494,119 @@ function renderLeadCharts() {
             ownerCardsContainer.innerHTML = '<div class="no-data">Nenhum dado disponível</div>';
         }
     }
+}
+
+
+function renderSultsValidation() {
+    const summaryEl = document.getElementById('sultsValidationSummary');
+    const tableBody = document.getElementById('sultsValidationTableBody');
+    const wonLostBody = document.getElementById('sultsWonLostBody');
+    if (!summaryEl || !tableBody) return;
+    
+    const validation = filteredLeadsData.sults_crosscheck;
+    
+    if (!validation) {
+        summaryEl.innerHTML = '<p>Conciliação com a SULTS ainda não foi executada.</p>';
+        tableBody.innerHTML = '<tr><td class="empty-cell" colspan="6">Sem dados para exibir.</td></tr>';
+        if (wonLostBody) {
+            wonLostBody.innerHTML = '<tr><td class="empty-cell" colspan="5">Sem leads ganhos ou perdidos sincronizados.</td></tr>';
+        }
+        return;
+    }
+    
+    if (!validation.available) {
+        summaryEl.innerHTML = `<p>${validation.message || 'Conciliação indisponível.'}</p>`;
+        tableBody.innerHTML = `<tr><td class="empty-cell" colspan="6">${validation.message || 'Conciliação indisponível.'}</td></tr>`;
+        if (wonLostBody) {
+            wonLostBody.innerHTML = '<tr><td class="empty-cell" colspan="5">Sem leads ganhos ou perdidos sincronizados.</td></tr>';
+        }
+        return;
+    }
+    
+    const summary = validation.summary || {};
+    const statusCounts = summary.status_counts || {};
+    summaryEl.innerHTML = `
+        <p>${validation.message || ''}</p>
+        <p class="sults-summary-details">
+            ${formatNumber(summary.matched || 0)} conciliados ·
+            ${formatNumber(statusCounts.aberto || 0)} em andamento ·
+            ${formatNumber(statusCounts.perdido || 0)} perdidos ·
+            ${formatNumber(statusCounts.ganho || 0)} ganhos ·
+            ${formatNumber(summary.divergent || 0)} divergências
+        </p>
+    `;
+    
+    const searchTerm = (sultsSearchInput?.value || '').toLowerCase();
+    const matches = filterSultsEntries(validation.matches || [], searchTerm);
+    if (!matches.length) {
+        const message = searchTerm
+            ? 'Nenhum lead encontrado para a busca.'
+            : 'Nenhum lead da planilha foi encontrado na SULTS.';
+        tableBody.innerHTML = `<tr><td class="empty-cell" colspan="6">${message}</td></tr>`;
+    } else {
+        tableBody.innerHTML = '';
+        matches.forEach(match => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${match.lead || '-'}</td>
+                <td>${match.email || '-'}</td>
+                <td>${match.telefone || '-'}</td>
+                <td>${match.sheet_status || '-'}</td>
+                <td>${match.sults_status || '-'}</td>
+                <td>${match.responsavel || '-'}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+    
+    if (wonLostBody) {
+        const wonLost = filterSultsEntries([
+            ...(validation.matches_ganhos || []),
+            ...(validation.matches_perdidos || [])
+        ], searchTerm);
+        if (!wonLost.length) {
+            const message = matches.length
+                ? 'Nenhum lead encontrado para a busca.'
+                : 'Sem leads ganhos ou perdidos sincronizados.';
+            wonLostBody.innerHTML = `<tr><td class="empty-cell" colspan="5">${message}</td></tr>`;
+        } else {
+            wonLostBody.innerHTML = '';
+            wonLost.forEach(entry => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${entry.lead || '-'}</td>
+                    <td>${entry.email || '-'}</td>
+                    <td>${entry.telefone || '-'}</td>
+                    <td>${entry.sults_status || '-'}</td>
+                    <td>${entry.responsavel || '-'}</td>
+                `;
+                wonLostBody.appendChild(row);
+            });
+        }
+    }
+}
+
+function filterSultsEntries(entries, term) {
+    return entries.filter(entry => matchesSultsSearch(entry, term) && matchesStatusFilters(entry));
+}
+
+function matchesSultsSearch(entry, term) {
+    if (!term) return true;
+    return Object.values(entry || {}).some(value => {
+        if (value === null || value === undefined) return false;
+        return String(value).toLowerCase().includes(term);
+    });
+}
+
+function matchesStatusFilters(entry) {
+    const statusKey = entry.status_key || 'outros';
+    if (!sultsStatusFilters[statusKey]) {
+        return false;
+    }
+    if (sultsOnlyDivergent && !entry.divergente) {
+        return false;
+    }
+    return true;
 }
 
 
@@ -879,7 +1046,23 @@ function renderLeadsTable() {
         
         // Telefone
         const tdTelefone = document.createElement('td');
-        tdTelefone.textContent = lead.telefone || '-';
+        const telefoneContainer = document.createElement('div');
+        telefoneContainer.style.display = 'flex';
+        telefoneContainer.style.alignItems = 'center';
+        telefoneContainer.style.gap = '0.5rem';
+        telefoneContainer.textContent = lead.telefone || '-';
+        if (lead.telefone) {
+            const whatsappBtn = document.createElement('button');
+            whatsappBtn.className = 'btn-whatsapp-table';
+            whatsappBtn.innerHTML = '<i class="fab fa-whatsapp"></i>';
+            whatsappBtn.title = 'Abrir WhatsApp';
+            whatsappBtn.onclick = (e) => {
+                e.stopPropagation();
+                openWhatsApp(lead.telefone, lead.nome, lead.fase);
+            };
+            telefoneContainer.appendChild(whatsappBtn);
+        }
+        tdTelefone.appendChild(telefoneContainer);
         tr.appendChild(tdTelefone);
         
         // Status
@@ -1090,11 +1273,63 @@ function renderLeadsDetail() {
         return;
     }
     
-    // Ordenar por nome
+    // Ordem de fases
+    const ordemFases = {
+        'lead': 1,
+        'mql': 2,
+        'conexao': 3,
+        'conexão': 3,
+        'pre-call agendada': 4,
+        'pre call agendada': 4,
+        'pre-call realizada': 5,
+        'pre call realizada': 5,
+        'apresentação modelo agendada': 6,
+        'apresentacao modelo agendada': 6,
+        'apresentação modelo realizada': 7,
+        'apresentacao modelo realizada': 7,
+        'apresentação financeira agendada': 8,
+        'apresentacao financeira agendada': 8,
+        'reunião financeira realizada': 9,
+        'reuniao financeira realizada': 9,
+        'reunião fundador agendada': 10,
+        'reuniao fundador agendada': 10,
+        'aguardando decisão': 11,
+        'aguardando decisao': 11,
+        'contrato franquia': 12
+    };
+    
+    // Ordenar por fase
     leadsEmAndamento.sort((a, b) => {
-        const nomeA = (a.nome || '').toLowerCase();
-        const nomeB = (b.nome || '').toLowerCase();
-        return nomeA.localeCompare(nomeB);
+        const faseA = (a.fase || 'Sem fase').toLowerCase().trim();
+        const faseB = (b.fase || 'Sem fase').toLowerCase().trim();
+        
+        let ordemA = 9999;
+        let ordemB = 9999;
+        
+        // Procurar ordem da fase A
+        for (const [key, val] of Object.entries(ordemFases)) {
+            if (faseA.includes(key)) {
+                ordemA = val;
+                break;
+            }
+        }
+        
+        // Procurar ordem da fase B
+        for (const [key, val] of Object.entries(ordemFases)) {
+            if (faseB.includes(key)) {
+                ordemB = val;
+                break;
+            }
+        }
+        
+        // Se as ordens forem iguais, ordenar por nome
+        if (ordemA === ordemB) {
+            const nomeA = (a.nome || '').toLowerCase();
+            const nomeB = (b.nome || '').toLowerCase();
+            return nomeA.localeCompare(nomeB);
+        }
+        
+        return ordemA - ordemB;
     });
     
     leadsEmAndamento.forEach(lead => {
@@ -1142,7 +1377,14 @@ function renderLeadsDetail() {
                         <i class="fas fa-phone"></i>
                         <div class="lead-detail-content">
                             <span class="lead-detail-label">Telefone</span>
-                            <span class="lead-detail-value">${lead.telefone || '-'}</span>
+                            <div class="telefone-container">
+                                <span class="lead-detail-value">${lead.telefone || '-'}</span>
+                                ${lead.telefone ? `
+                                <button class="btn-whatsapp" onclick="openWhatsApp('${lead.telefone}', '${(lead.nome || '').replace(/'/g, "\\'")}')" title="Abrir WhatsApp">
+                                    <i class="fab fa-whatsapp"></i>
+                                </button>
+                                ` : ''}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1234,6 +1476,19 @@ function renderLeadsDetail() {
                     </div>
                 </div>
                 ` : ''}
+                <div class="lead-detail-actions">
+                    ${lead.telefone ? `
+                    <button class="btn-action btn-whatsapp-action" onclick="openWhatsApp('${lead.telefone}', '${(lead.nome || '').replace(/'/g, "\\'")}', '${lead.fase || ''}')" title="Enviar WhatsApp">
+                        <i class="fab fa-whatsapp"></i> WhatsApp
+                    </button>
+                    ` : ''}
+                    <button class="btn-action btn-change-phase" onclick="changeLeadPhase('${lead.id}', '${lead.fase || ''}', '${lead.etapa_id || ''}')" title="Mudar fase">
+                        <i class="fas fa-arrow-right"></i> Mudar Fase
+                    </button>
+                    <button class="btn-action btn-add-note" onclick="addLeadNote('${lead.id}', '${lead.nome || ''}')" title="Adicionar anotação">
+                        <i class="fas fa-sticky-note"></i> Anotação
+                    </button>
+                </div>
             </div>
         `;
         
@@ -1801,116 +2056,104 @@ function renderTemporalCharts() {
 }
 
 function renderFinancialCharts() {
-    if (filteredData.kpis) {
-        const kpis = filteredData.kpis;
-        
-        // Update conversion chart
-        if (kpis.total_leads && kpis.total_mqls) {
-            conversionChart.data.datasets[0].data = [kpis.total_leads, kpis.total_mqls];
-            conversionChart.update();
-        }
-        
-        // Update financial metrics
-        if (kpis.investimento_total && kpis.total_leads) {
-            const cpl = kpis.investimento_total / kpis.total_leads;
-            document.getElementById('avgCPL').textContent = 'R$ ' + cpl.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        }
-        
-        if (kpis.investimento_total && kpis.total_mqls) {
-            const cpmql = kpis.investimento_total / kpis.total_mqls;
-            document.getElementById('avgCPMQL').textContent = 'R$ ' + cpmql.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        }
-        
-        // Custo por MQL (dados do backend)
-        if (kpis.custo_por_mql && kpis.custo_por_mql > 0) {
-            document.getElementById('custoPorMQL').textContent = 'R$ ' + kpis.custo_por_mql.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        } else {
-            document.getElementById('custoPorMQL').textContent = 'N/A';
-        }
+    if (!filteredData) return;
+    
+    const kpis = filteredData.kpis || {};
+    
+    if (kpis.total_leads && kpis.total_mqls) {
+        conversionChart.data.datasets[0].data = [kpis.total_leads, kpis.total_mqls];
+        conversionChart.update();
     }
     
-    // Render costs chart with last week data
+    const avgCPLValue = (kpis.total_leads && kpis.investimento_total)
+        ? kpis.investimento_total / kpis.total_leads
+        : 0;
+    document.getElementById('avgCPL').textContent = formatCurrency(avgCPLValue);
+    
+    const avgCPMQLValue = (kpis.total_mqls && kpis.investimento_total)
+        ? kpis.investimento_total / kpis.total_mqls
+        : 0;
+    document.getElementById('avgCPMQL').textContent = formatCurrency(avgCPMQLValue);
+    
+    if (kpis.custo_por_mql && kpis.custo_por_mql > 0) {
+        document.getElementById('custoPorMQL').textContent = formatCurrency(kpis.custo_por_mql);
+    } else {
+        document.getElementById('custoPorMQL').textContent = 'N/A';
+    }
+    
+    const funnelsAnalysis = filteredData.funnels_analysis || null;
+    const funnelTotals = funnelsAnalysis?.totals || {};
+    
+    const investmentEl = document.getElementById('funnelsInvestmentTotal');
+    const clicksEl = document.getElementById('funnelsClicksTotal');
+    const impressionsEl = document.getElementById('funnelsImpressionsTotal');
+    const ctrEl = document.getElementById('funnelsCtrTotal');
+    const cpcEl = document.getElementById('funnelsCpcTotal');
+    
+    if (investmentEl) investmentEl.textContent = formatCurrency(funnelTotals.investimento || 0);
+    if (clicksEl) clicksEl.textContent = formatNumber(funnelTotals.clicks || 0);
+    if (impressionsEl) impressionsEl.textContent = formatNumber(funnelTotals.impressions || 0);
+    if (ctrEl) ctrEl.textContent = (funnelTotals.ctr || 0).toFixed(2) + '%';
+    if (cpcEl) cpcEl.textContent = formatCurrency(funnelTotals.cpc || 0);
+    
     renderCostsChart();
+    renderFunnelsTable();
 }
 
 function renderCostsChart() {
-    if (!filteredData || !filteredData.raw_data) return;
+    if (!filteredData) return;
     
-    // Get date and investment columns
-    const dateCol = filteredData.date_column;
-    const costCol = 'Investimento';
-    
-    if (!dateCol || !filteredData.raw_data.length) return;
-    
-    // Helper function to format date to DD/MM/YYYY
-    function formatDate(dateStr) {
-        if (!dateStr) return '';
-        
-        // If already in DD/MM/YYYY format, return as is
-        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            return dateStr;
-        }
-        
-        // If in YYYY-MM-DD format (with or without time)
-        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-            const parts = dateStr.split(' ')[0].split('-'); // Remove time if present
-            const year = parts[0];
-            const month = parts[1];
-            const day = parts[2];
-            return `${day}/${month}/${year}`;
-        }
-        
-        // Try to parse and format
-        try {
-            const date = new Date(dateStr);
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            return `${day}/${month}/${year}`;
-        } catch (e) {
-            return dateStr;
-        }
+    const analysis = filteredData.funnels_analysis;
+    if (!analysis || !analysis.records || !analysis.records.length) {
+        costsChart.data.labels = [];
+        costsChart.data.datasets[0].data = [];
+        costsChart.update();
+        return;
     }
     
-    // Group investment by date
-    const investmentByDate = {};
-    filteredData.raw_data.forEach(row => {
-        let date = row[dateCol] || row['Data_Processada'];
-        if (!date) return;
-        
-        // Format date to DD/MM/YYYY
-        date = formatDate(date);
-        
-        const investimento = parseFloat(row[costCol] || row['Investimento'] || 0);
-        if (investmentByDate[date]) {
-            investmentByDate[date] += investimento;
-        } else {
-            investmentByDate[date] = investimento;
-        }
-    });
+    let records = analysis.records.filter(record => !record.is_total);
+    if (!records.length) {
+        records = analysis.records;
+    }
     
-    // Convert to array and sort by date (convert to comparable format for sorting)
-    const dates = Object.keys(investmentByDate).sort((a, b) => {
-        const [dayA, monthA, yearA] = a.split('/').map(Number);
-        const [dayB, monthB, yearB] = b.split('/').map(Number);
-        const dateA = new Date(yearA, monthA - 1, dayA);
-        const dateB = new Date(yearB, monthB - 1, dayB);
-        return dateA - dateB;
-    });
+    const labels = records.map(record => record.name);
+    const values = records.map(record => record.investimento || 0);
     
-    // Get last 7 days
-    const last7Days = dates.slice(-7);
-    
-    // Format dates for display
-    const labels = last7Days;
-    const values = last7Days.map(date => investmentByDate[date] || 0);
-    
-    // Update costs chart
     costsChart.data.labels = labels;
     costsChart.data.datasets[0].data = values;
-    costsChart.data.datasets[0].backgroundColor = 'rgba(237, 177, 37, 0.8)'; // Mustard color
+    costsChart.data.datasets[0].backgroundColor = 'rgba(237, 177, 37, 0.8)';
     costsChart.data.datasets[0].borderColor = '#edb125';
+    costsChart.data.datasets[0].label = 'Investimento';
     costsChart.update();
+}
+
+function renderFunnelsTable() {
+    const tableBody = document.getElementById('funnelsTableBody');
+    if (!tableBody) return;
+    
+    const analysis = filteredData?.funnels_analysis;
+    tableBody.innerHTML = '';
+    
+    if (!analysis || !analysis.records || !analysis.records.length) {
+        tableBody.innerHTML = '<tr><td class="empty-cell" colspan="6">Nenhum dado de funil disponível.</td></tr>';
+        return;
+    }
+    
+    analysis.records.forEach(record => {
+        const row = document.createElement('tr');
+        if (record.is_total) {
+            row.classList.add('total-row');
+        }
+        row.innerHTML = `
+            <td>${record.name}</td>
+            <td class="number-cell">${formatNumber(record.impressions || 0)}</td>
+            <td class="number-cell">${formatNumber(record.clicks || 0)}</td>
+            <td class="number-cell">${formatCurrency(record.investimento || 0)}</td>
+            <td class="number-cell">${(record.ctr || 0).toFixed(2)}%</td>
+            <td class="number-cell">${formatCurrency(record.cpc || 0)}</td>
+        `;
+        tableBody.appendChild(row);
+    });
 }
 
 function renderCreativesCharts() {
@@ -2370,6 +2613,58 @@ function editResponsavel(leadId, currentResponsavel, currentResponsavelId) {
     });
 }
 
+// Função para formatar telefone para WhatsApp
+function formatPhoneForWhatsApp(telefone) {
+    if (!telefone) return null;
+    
+    // Remove todos os caracteres não numéricos
+    let numero = telefone.replace(/\D/g, '');
+    
+    // Se não começar com 55 (código do Brasil), adiciona
+    if (!numero.startsWith('55')) {
+        // Se começar com 0, remove
+        if (numero.startsWith('0')) {
+            numero = numero.substring(1);
+        }
+        // Adiciona código do país
+        numero = '55' + numero;
+    }
+    
+    return numero;
+}
+
+// Função para gerar mensagem padrão
+function generateWhatsAppMessage(nome, fase) {
+    const saudacao = nome ? `Olá ${nome}!` : 'Olá!';
+    const mensagemFase = fase ? ` Vi que você está na fase ${fase}.` : '';
+    
+    return `${saudacao}${mensagemFase} Gostaria de conversar sobre nossa franquia. Podemos agendar uma conversa?`;
+}
+
+// Função para abrir WhatsApp
+function openWhatsApp(telefone, nome, fase) {
+    if (!telefone) {
+        alert('Telefone não disponível para este lead.');
+        return;
+    }
+    
+    const numeroFormatado = formatPhoneForWhatsApp(telefone);
+    
+    if (!numeroFormatado || numeroFormatado.length < 10) {
+        alert('Telefone inválido. Por favor, verifique o número.');
+        return;
+    }
+    
+    // Gerar mensagem padrão
+    const mensagem = generateWhatsAppMessage(nome, fase);
+    
+    // Criar link do WhatsApp
+    const link = `https://wa.me/${numeroFormatado}?text=${encodeURIComponent(mensagem)}`;
+    
+    // Abrir em nova aba
+    window.open(link, '_blank');
+}
+
 // Função para salvar responsável
 async function saveResponsavel(leadId, currentResponsavelId) {
     const select = document.getElementById('newResponsavel');
@@ -2425,6 +2720,198 @@ async function saveResponsavel(leadId, currentResponsavelId) {
     } catch (error) {
         console.error('Erro ao atualizar responsável:', error);
         alert('Erro ao atualizar responsável. Por favor, tente novamente.');
+    }
+}
+
+// Função para mudar fase do lead
+async function changeLeadPhase(leadId, currentFase, currentEtapaId) {
+    try {
+        // Buscar etapas disponíveis
+        const response = await fetch('/api/sults/etapas?funil_id=1');
+        const result = await response.json();
+        
+        let etapas = [];
+        if (result.success && result.data && result.data.length > 0) {
+            etapas = result.data;
+        } else {
+            // Fallback: usar fases conhecidas
+            etapas = [
+                { id: 1, nome: 'Lead' },
+                { id: 2, nome: 'MQL' },
+                { id: 3, nome: 'Conexão' },
+                { id: 4, nome: 'Pre-call agendada' },
+                { id: 5, nome: 'Pre-call realizada' },
+                { id: 6, nome: 'Apresentação Modelo Agendada' },
+                { id: 7, nome: 'Apresentação Modelo Realizada' },
+                { id: 8, nome: 'Apresentação Financeira agendada' },
+                { id: 9, nome: 'Reunião Financeira Realizada' },
+                { id: 10, nome: 'Reunião Fundador agendada' },
+                { id: 11, nome: 'Aguardando decisão' },
+                { id: 12, nome: 'Contrato Franquia' }
+            ];
+        }
+        
+        const allLeads = filteredLeadsData?.leads || [];
+        const lead = allLeads.find(l => l.id == leadId);
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Mudar Fase do Lead</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Lead:</strong> ${lead?.nome || 'N/A'}</p>
+                    <p><strong>Fase Atual:</strong> ${currentFase || '-'}</p>
+                    <div class="form-group">
+                        <label for="newEtapa">Nova Fase:</label>
+                        <select id="newEtapa" class="form-select">
+                            <option value="">Selecione uma fase...</option>
+                            ${etapas.map(e => `<option value="${e.id}" ${e.id == currentEtapaId ? 'selected' : ''}>${e.nome || e.label || e}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                    <button class="btn btn-primary" onclick="saveLeadPhase('${leadId}', '${currentEtapaId || ''}')">Salvar</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    } catch (error) {
+        console.error('Erro ao carregar etapas:', error);
+        alert('Erro ao carregar fases disponíveis. Por favor, tente novamente.');
+    }
+}
+
+// Função para salvar nova fase
+async function saveLeadPhase(leadId, currentEtapaId) {
+    const select = document.getElementById('newEtapa');
+    const newEtapaId = select.value;
+    
+    if (!newEtapaId) {
+        alert('Por favor, selecione uma fase.');
+        return;
+    }
+    
+    if (newEtapaId === currentEtapaId) {
+        alert('A fase selecionada é a mesma atual.');
+        document.querySelector('.modal-overlay')?.remove();
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/sults/update-etapa', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                negocio_id: leadId,
+                etapa_id: parseInt(newEtapaId)
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Fase atualizada com sucesso!');
+            document.querySelector('.modal-overlay')?.remove();
+            // Recarregar os dados
+            if (typeof loadLeadsData === 'function') {
+                loadLeadsData();
+            }
+        } else {
+            alert(`Erro ao atualizar fase: ${result.error || 'Erro desconhecido'}`);
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar fase:', error);
+        alert('Erro ao atualizar fase. Por favor, tente novamente.');
+    }
+}
+
+// Função para adicionar anotação
+function addLeadNote(leadId, leadNome) {
+    const allLeads = filteredLeadsData?.leads || [];
+    const lead = allLeads.find(l => l.id == leadId);
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Adicionar Anotação</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Lead:</strong> ${leadNome || 'N/A'}</p>
+                <div class="form-group">
+                    <label for="anotacaoTexto">Anotação:</label>
+                    <textarea id="anotacaoTexto" class="form-textarea" rows="5" placeholder="Digite sua anotação aqui..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveLeadNote('${leadId}')">Salvar</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Função para salvar anotação
+async function saveLeadNote(leadId) {
+    const textarea = document.getElementById('anotacaoTexto');
+    const anotacao = textarea.value.trim();
+    
+    if (!anotacao) {
+        alert('Por favor, digite uma anotação.');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/sults/add-anotacao', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                negocio_id: leadId,
+                anotacao: anotacao
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Anotação adicionada com sucesso!');
+            document.querySelector('.modal-overlay')?.remove();
+        } else {
+            alert(`Erro ao adicionar anotação: ${result.error || 'Erro desconhecido'}`);
+        }
+    } catch (error) {
+        console.error('Erro ao adicionar anotação:', error);
+        alert('Erro ao adicionar anotação. Por favor, tente novamente.');
     }
 }
 
@@ -2488,6 +2975,11 @@ function initializeSultsData() {
 }
 
 async function handleSultsDataLoad() {
+    const sultsValidationSection = document.getElementById('sultsValidationSection');
+    if (sultsValidationSection) {
+        sultsValidationSection.style.display = 'none';
+    }
+    
     showLoading();
     
     try {
