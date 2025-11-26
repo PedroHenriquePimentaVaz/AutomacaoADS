@@ -164,6 +164,11 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 60vh;
+    width: 100%;
+}
+
+.upload-section .upload-card-simplified {
+    margin: 0 auto;
 }
 
 .upload-card {
