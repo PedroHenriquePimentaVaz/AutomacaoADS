@@ -1,0 +1,21 @@
+# Arquivos ignorados no deploy Vercel
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.log
+*.json
+!package.json
+!vercel.json
+sixth-now-475017-k8-785034518ab7.json
+credentials*.json
+*service-account*.json
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
