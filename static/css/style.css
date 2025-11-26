@@ -623,18 +623,35 @@ body {
 }
 
 .analysis-section {
-    background: var(--primary-bg);
-    border-radius: var(--radius-lg);
-    padding: 2rem;
+    background: white;
+    border-radius: var(--radius-xl);
+    padding: 2.5rem;
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-light);
+    transition: all var(--transition-base);
+}
+
+.analysis-section:hover {
+    box-shadow: var(--shadow-lg);
 }
 
 .section-header {
     text-align: center;
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 2px solid var(--border-light);
+    position: relative;
+}
+
+.section-header::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--bh-primary), var(--bh-blue));
 }
 
 .section-header h2 {
