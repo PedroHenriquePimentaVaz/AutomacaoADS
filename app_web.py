@@ -12,6 +12,8 @@ from collections import defaultdict
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+import hashlib
+import gc
 try:
     from sults_api import SultsAPIClient
     SULTS_AVAILABLE = True
@@ -25,6 +27,66 @@ app.jinja_env.auto_reload = True
 app.jinja_env.cache = {}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+# Cache simples em memória
+_DATA_CACHE = {}
+_CACHE_TTL = 300  # 5 minutos
+_CACHE_MAX_SIZE = 10  # Máximo de 10 entradas no cache
+
+def _get_cache_key(data):
+    """Gera chave de cache baseada nos dados"""
+    if isinstance(data, bytes):
+        return hashlib.md5(data).hexdigest()
+    elif isinstance(data, str):
+        return hashlib.md5(data.encode()).hexdigest()
+    return None
+
+def _clear_old_cache():
+    """Remove entradas antigas do cache"""
+    global _DATA_CACHE
+    now = datetime.now()
+    keys_to_remove = []
+    for key, value in _DATA_CACHE.items():
+        if (now - value['timestamp']).total_seconds() > _CACHE_TTL:
+            keys_to_remove.append(key)
+    for key in keys_to_remove:
+        del _DATA_CACHE[key]
+    
+    # Se ainda estiver cheio, remove os mais antigos
+    if len(_DATA_CACHE) > _CACHE_MAX_SIZE:
+        sorted_items = sorted(_DATA_CACHE.items(), key=lambda x: x[1]['timestamp'])
+        for key, _ in sorted_items[:len(_DATA_CACHE) - _CACHE_MAX_SIZE]:
+            del _DATA_CACHE[key]
+    
+    # Força limpeza de memória
+    gc.collect()
+
+def _get_from_cache(key):
+    """Recupera dados do cache"""
+    _clear_old_cache()
+    if key in _DATA_CACHE:
+        entry = _DATA_CACHE[key]
+        if (datetime.now() - entry['timestamp']).total_seconds() < _CACHE_TTL:
+            return entry['data']
+        else:
+            del _DATA_CACHE[key]
+    return None
+
+def _save_to_cache(key, data):
+    """Salva dados no cache"""
+    _clear_old_cache()
+    _DATA_CACHE[key] = {
+        'data': data,
+        'timestamp': datetime.now()
+    }
+
+@app.route('/api/clear-cache', methods=['POST'])
+def clear_cache():
+    """Endpoint para limpar cache manualmente"""
+    global _DATA_CACHE
+    _DATA_CACHE.clear()
+    gc.collect()
+    return jsonify({'success': True, 'message': 'Cache limpo com sucesso'})
 
 
 def _make_unique_headers(headers):
@@ -244,7 +306,12 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx', priori
 
     try:
         file_like.seek(0)
-        sheets_dict = pd.read_excel(file_like, sheet_name=None, dtype=str)
+        # Usa openpyxl que é mais rápido para arquivos .xlsx
+        try:
+            sheets_dict = pd.read_excel(file_like, sheet_name=None, dtype=str, engine='openpyxl')
+        except:
+            # Fallback para engine padrão
+            sheets_dict = pd.read_excel(file_like, sheet_name=None, dtype=str)
 
         for sheet_name, sheet_df in sheets_dict.items():
             cleaned_df = sheet_df.dropna(how='all').dropna(axis=1, how='all')
@@ -385,24 +452,60 @@ def download_file_from_drive(file_id, credentials):
         traceback.print_exc()
         return None, None
 
-def clean_dataframe_for_json(df):
-    """Limpa DataFrame removendo valores NaN para serialização JSON"""
-    cleaned_data = []
-    for _, row in df.iterrows():
-        clean_row = {}
-        for col, value in row.items():
-            if pd.isna(value):
-                # Se for uma coluna que deveria ser numérica, usa 0
-                if any(keyword in col.upper() for keyword in ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL', 'INVESTIMENTO', 'CLIQUES', 'IMPRESSÕES']):
-                    clean_row[col] = 0.0
+def clean_dataframe_for_json(df, max_rows=2000):
+    """Limpa DataFrame removendo valores NaN para serialização JSON - OTIMIZADO"""
+    # Limita quantidade de linhas para não travar
+    if len(df) > max_rows:
+        df = df.head(max_rows)
+        print(f"Limitando dados JSON a {max_rows} linhas para melhor performance")
+    
+    # Otimização: converte direto para dict sem iterrows (muito mais rápido)
+    try:
+        # Substitui NaN por None de forma vetorizada
+        df_cleaned = df.copy()
+        
+        # Identifica colunas numéricas
+        numeric_keywords = ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL', 'INVESTIMENTO', 'CLIQUES', 'IMPRESSÕES']
+        numeric_cols = [col for col in df_cleaned.columns if any(kw in str(col).upper() for kw in numeric_keywords)]
+        
+        # Preenche NaN em colunas numéricas com 0
+        for col in numeric_cols:
+            if col in df_cleaned.columns:
+                df_cleaned[col] = df_cleaned[col].fillna(0.0)
+        
+        # Preenche outras colunas com None
+        df_cleaned = df_cleaned.where(pd.notnull(df_cleaned), None)
+        
+        # Converte tipos
+        for col in df_cleaned.columns:
+            if df_cleaned[col].dtype in ['int64', 'int32']:
+                df_cleaned[col] = df_cleaned[col].astype('Int64')
+            elif df_cleaned[col].dtype in ['float64', 'float32']:
+                df_cleaned[col] = df_cleaned[col].astype('float64')
+            elif df_cleaned[col].dtype == 'datetime64[ns]':
+                df_cleaned[col] = df_cleaned[col].dt.strftime('%Y-%m-%d')
+        
+        # Converte para dict - muito mais rápido que iterrows
+        result = df_cleaned.to_dict('records')
+        return result
+    except Exception as e:
+        print(f"Erro na conversão otimizada, usando método fallback: {e}")
+        # Fallback para método antigo se houver erro (limitado)
+        cleaned_data = []
+        for _, row in df.head(500).iterrows():  # Limita a 500 no fallback
+            clean_row = {}
+            for col, value in row.items():
+                if pd.isna(value):
+                    if any(keyword in col.upper() for keyword in numeric_keywords):
+                        clean_row[col] = 0.0
+                    else:
+                        clean_row[col] = None
+                elif isinstance(value, (int, float)):
+                    clean_row[col] = float(value) if not pd.isna(value) else 0.0
                 else:
-                    clean_row[col] = None
-            elif isinstance(value, (int, float)):
-                clean_row[col] = float(value) if not pd.isna(value) else 0.0
-            else:
-                clean_row[col] = str(value)
-        cleaned_data.append(clean_row)
-    return cleaned_data
+                    clean_row[col] = str(value)
+            cleaned_data.append(clean_row)
+        return cleaned_data
 
 def analyze_google_ads_funnels(df):
     """Gera métricas financeiras da aba Controle Google ADS 2."""
@@ -1137,21 +1240,55 @@ def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, 
     
     total_rows = len(df)
     
-    for _, row in df.iterrows():
-        raw_email = row[email_col] if email_col in df.columns else ''
-        raw_phone = row[phone_col] if phone_col in df.columns else ''
-        raw_status = row[status_col] if status_col in df.columns else ''
-        raw_name = row[name_col] if name_col in df.columns else ''
+    # Otimização: processa apenas uma amostra se tiver muitos leads
+    max_rows_to_process = 5000  # Limite para não travar
+    process_all = total_rows <= max_rows_to_process
+    
+    if not process_all:
+        # Processa amostra representativa
+        df_sample = df.sample(n=max_rows_to_process, random_state=42)
+        print(f"Processando amostra de {max_rows_to_process} leads de {total_rows} total")
+    else:
+        df_sample = df
+    
+    # Otimização: pré-processa colunas de uma vez
+    if email_col and email_col in df_sample.columns:
+        df_sample['_email_norm'] = df_sample[email_col].fillna('').astype(str).str.strip().apply(normalize_email)
+    else:
+        df_sample['_email_norm'] = ''
+    
+    if phone_col and phone_col in df_sample.columns:
+        df_sample['_phone_norm'] = df_sample[phone_col].fillna('').astype(str).str.strip().apply(normalize_phone)
+    else:
+        df_sample['_phone_norm'] = ''
+    
+    if status_col and status_col in df_sample.columns:
+        df_sample['_status_key'] = df_sample[status_col].fillna('').astype(str).str.strip().apply(normalize_status_key)
+    else:
+        df_sample['_status_key'] = 'outros'
+    
+    if name_col and name_col in df_sample.columns:
+        df_sample['_name_slug'] = df_sample[name_col].fillna('').astype(str).str.strip().apply(normalize_name)
+    else:
+        df_sample['_name_slug'] = ''
+    
+    # Processa linha por linha (ainda necessário para matching complexo)
+    for idx, row in df_sample.iterrows():
+        email_norm = row['_email_norm']
+        phone_norm = row['_phone_norm']
+        sheet_status_key = row['_status_key']
+        sheet_slug = row['_name_slug']
+        
+        # Pega valores originais para exibição
+        raw_email = row[email_col] if email_col in df_sample.columns else ''
+        raw_phone = row[phone_col] if phone_col in df_sample.columns else ''
+        raw_status = row[status_col] if status_col in df_sample.columns else ''
+        raw_name = row[name_col] if name_col in df_sample.columns else ''
         
         sheet_email = '' if pd.isna(raw_email) else str(raw_email).strip()
         sheet_phone = '' if pd.isna(raw_phone) else str(raw_phone).strip()
         sheet_status = '' if pd.isna(raw_status) else str(raw_status).strip()
         sheet_name = '' if pd.isna(raw_name) else str(raw_name).strip()
-        
-        email_norm = normalize_email(sheet_email) if email_col else ''
-        phone_norm = normalize_phone(sheet_phone) if phone_col else ''
-        sheet_status_key = normalize_status_key(sheet_status) if sheet_status else 'outros'
-        sheet_slug = normalize_name(sheet_name) if sheet_name else ''
         
         candidate = None
         match_source = None
@@ -1266,7 +1403,13 @@ def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, 
     }
 
 def analyze_leads_dataframe(df):
-    """Gera análises a partir de uma planilha de leads"""
+    """Gera análises a partir de uma planilha de leads - OTIMIZADO"""
+    # Limita processamento se tiver muitos dados
+    max_rows = 50000  # Limite máximo de linhas para processar
+    if len(df) > max_rows:
+        print(f"Limitando processamento a {max_rows} linhas de {len(df)} total")
+        df = df.head(max_rows)
+    
     df = df.copy()
     df.columns = [str(col).strip() for col in df.columns]
     
@@ -1284,9 +1427,9 @@ def analyze_leads_dataframe(df):
                 return 'organico'
             text = str(value).strip()
             return text if text else 'organico'
-        df[source_col] = df[source_col].apply(_normalize_source)
-        df[source_col] = df[source_col].astype(str).str.strip()
-        df[source_col] = df[source_col].replace({'': 'organico', 'nan': 'organico', 'None': 'organico', '<NA>': 'organico'})
+        # Otimização: usa operações vetorizadas ao invés de apply
+        df[source_col] = df[source_col].fillna('organico').astype(str).str.strip()
+        df[source_col] = df[source_col].replace({'': 'organico', 'nan': 'organico', 'None': 'organico', '<NA>': 'organico', 'None': 'organico'})
         df[source_col] = df[source_col].fillna('organico')
 
     if date_col:
@@ -1350,12 +1493,17 @@ def analyze_leads_dataframe(df):
             for status, count in status_counts.items()
         ]
         
+        # Otimização: usa operações vetorizadas ao invés de apply
         status_lower = status_series.str.lower()
         won_keywords = ['ganho', 'won', 'fechado', 'concluído', 'concluido', 'cliente', 'converted']
         lost_keywords = ['perdido', 'lost', 'cancelado', 'desistiu', 'no show', 'no-show', 'falhou']
         
-        leads_won = int(status_lower.apply(lambda x: any(keyword in x for keyword in won_keywords)).sum())
-        leads_lost = int(status_lower.apply(lambda x: any(keyword in x for keyword in lost_keywords)).sum())
+        # Cria máscaras booleanas de uma vez
+        won_mask = status_lower.str.contains('|'.join(won_keywords), case=False, na=False)
+        lost_mask = status_lower.str.contains('|'.join(lost_keywords), case=False, na=False)
+        
+        leads_won = int(won_mask.sum())
+        leads_lost = int(lost_mask.sum())
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
 
     if source_col:
@@ -1439,13 +1587,30 @@ def analyze_leads_dataframe(df):
         'owner': owner_distribution
     }
 
-    sults_crosscheck = crosscheck_leads_with_sults(
-        df,
-        name_col=name_col,
-        status_col=status_col,
-        email_col=email_col,
-        phone_col=phone_col
-    )
+    # Conciliação SULTS - DESABILITADA por padrão para melhor performance
+    # Pode ser habilitada depois via endpoint separado se necessário
+    sults_crosscheck = {
+        'available': False,
+        'message': 'Conciliação com SULTS desabilitada para melhor performance. Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
+    }
+    
+    # Opcional: processa conciliação apenas se tiver poucos leads E se solicitado explicitamente
+    # Comentado para melhor performance - descomente se necessário
+    # if len(df) < 500 and request.args.get('sults_sync') == 'true':
+    #     try:
+    #         sults_crosscheck = crosscheck_leads_with_sults(
+    #             df,
+    #             name_col=name_col,
+    #             status_col=status_col,
+    #             email_col=email_col,
+    #             phone_col=phone_col
+    #         )
+    #     except Exception as e:
+    #         print(f"Erro na conciliação SULTS (não bloqueante): {e}")
+    #         sults_crosscheck = {
+    #             'available': False,
+    #             'message': 'Conciliação com SULTS não disponível no momento.'
+    #         }
     if sults_crosscheck.get('available'):
         summary = sults_crosscheck.get('summary', {})
         status_counts = summary.get('status_counts', {})
@@ -1511,10 +1676,13 @@ def analyze_leads_dataframe(df):
         },
         'timeline': timeline,
         'insights': insights,
-        'recent_leads': clean_dataframe_for_json(recent_preview),
-        'raw_data': clean_dataframe_for_json(df),
+        'recent_leads': clean_dataframe_for_json(recent_preview, max_rows=20),
+        'raw_data': clean_dataframe_for_json(df, max_rows=1000),  # Limita a 1000 linhas para não travar
         'sults_crosscheck': sults_crosscheck
     }
+    
+    # Limpa memória após retornar
+    gc.collect()
 
 @app.route('/')
 def index():
@@ -1535,11 +1703,26 @@ def upload_file():
         
         print(f"Processing file: {file.filename}")
         
-        # Lê o arquivo
+        # Lê o arquivo com otimizações
+        file_bytes = file.read()
+        cache_key = _get_cache_key(file_bytes)
+        cached_data = _get_from_cache(cache_key)
+        
+        if cached_data:
+            print("Usando dados do cache")
+            return jsonify(cached_data)
+        
+        file_like = io.BytesIO(file_bytes)
         if file.filename.endswith('.csv'):
-            df = pd.read_csv(file)
+            # Otimizações para CSV
+            df = pd.read_csv(file_like, dtype=str, low_memory=False, engine='c')
         else:
-            df = pd.read_excel(file)
+            # Otimizações para Excel - usa openpyxl que é mais rápido
+            try:
+                df = pd.read_excel(file_like, engine='openpyxl', dtype=str)
+            except:
+                # Fallback para engine padrão
+                df = pd.read_excel(file_like, dtype=str)
         
         # Processa dados
         date_col = detect_date_column(df)
@@ -1550,6 +1733,11 @@ def upload_file():
         # Processa datas
         if date_col:
             df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+        
+        # Otimização: processa apenas colunas necessárias
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            df[numeric_cols] = df[numeric_cols].fillna(0)
         
         # Preenche campos em branco com 0 APÓS detectar as colunas
         df = fill_empty_fields_with_zero(df)
@@ -1741,9 +1929,18 @@ def upload_file():
                 'summary': summary_data,
                 'kpis': kpis,
                 'creative_analysis': creative_analysis,
-                'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
+                'raw_data': clean_dataframe_for_json(df, max_rows=2000)  # Limita para performance
             }
         }
+        
+        # Salva no cache se tiver chave
+        if cache_key:
+            _save_to_cache(cache_key, result)
+        
+        # Limpa memória
+        del df
+        gc.collect()
+        
         print("Upload processing completed successfully")
         return jsonify(result)
         
@@ -1755,6 +1952,8 @@ def upload_file():
 
 @app.route('/auto-upload')
 def auto_upload():
+    # Limpa cache antes de carregar novos dados
+    _clear_old_cache()
     """Rota para upload automático da planilha do Google Drive"""
     try:
         # Carrega variáveis de ambiente
@@ -1912,11 +2111,14 @@ def auto_upload():
                     print(f"Sorted creative stats:")
                     print(creative_stats.head())
                     
-                    # Top criativos para gráfico
+                    # Top criativos para gráfico - otimizado
                     top_creatives = {}
-                    for _, row in creative_stats.head(10).iterrows():
-                        creative_name = str(row['creative'])
-                        top_creatives[creative_name] = int(row['Total_Leads'])
+                    top_10 = creative_stats.head(10)
+                    if len(top_10) > 0:
+                        top_creatives = dict(zip(
+                            top_10['creative'].astype(str),
+                            top_10['Total_Leads'].astype(int)
+                        ))
                     
                     # Criativo com mais leads
                     top_lead_creative = creative_stats.iloc[0] if len(creative_stats) > 0 else None
@@ -1978,7 +2180,7 @@ def auto_upload():
                         'summary': summary_data,
                         'kpis': kpis,
                         'creative_analysis': creative_analysis,
-                        'raw_data': clean_dataframe_for_json(df)  # Todas as linhas
+                        'raw_data': clean_dataframe_for_json(df, max_rows=2000)  # Limita para performance
                     }
                 }
                 
@@ -2357,6 +2559,13 @@ def upload_leads():
         priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
         file_bytes = file.read()
+        cache_key = _get_cache_key(file_bytes)
+        cached_data = _get_from_cache(cache_key)
+        
+        if cached_data:
+            print("Usando dados do cache para leads")
+            return jsonify(cached_data)
+        
         df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename, priority_names)
         sheet_info = sheet_info or {}
         sheet_info.setdefault('source', 'manual_upload')
@@ -2367,12 +2576,22 @@ def upload_leads():
         analysis['sheet_info'] = sheet_info
         analysis['file_name'] = file.filename
 
-        return jsonify({
+        result = {
             'success': True,
             'message': 'Planilha de leads processada com sucesso!',
             'sheet_info': sheet_info,
             'data': analysis
-        })
+        }
+        
+        # Salva no cache
+        if cache_key:
+            _save_to_cache(cache_key, result)
+        
+        # Limpa memória
+        del df
+        gc.collect()
+
+        return jsonify(result)
     except Exception as e:
         print(f"Erro ao processar planilha de leads: {str(e)}")
         import traceback

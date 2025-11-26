@@ -1,17 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
 
+# Credenciais e secrets
 *.pem
 *.key
 *.p12
 *service-account*.json
 *credentials*.json
 .env
-.venv/
-__pycache__/
-node_modules/
-.DS_Store
-.vscode/
-*.log
 sixth-now-475017-k8-785034518ab7.json
-*service-account*.json
-*credentials*.json
-.env
+
+# Logs
+*.log
+*.log.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Temporários
+*.tmp
+*.temp
+.cache/
