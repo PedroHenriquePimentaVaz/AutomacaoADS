@@ -1734,41 +1734,47 @@ def analyze_leads_dataframe(df):
     #             'available': False,
     #             'message': 'Conciliação com SULTS não disponível no momento.'
     #         }
-    if sults_crosscheck.get('available'):
-        summary = sults_crosscheck.get('summary', {})
-        status_counts = summary.get('status_counts', {})
-        if status_counts:
-            sults_status_distribution = []
-            for key in ['aberto', 'perdido', 'ganho', 'outros']:
-                value = status_counts.get(key)
-                if value:
-                    sults_status_distribution.append({
-                        'label': build_status_label(key),
-                        'value': int(value)
-                    })
-            distributions['sults_status'] = sults_status_distribution
-            kpis['sults_status_counts'] = status_counts
-            kpis['sults_matched'] = summary.get('matched', 0)
-            kpis['sults_divergent'] = summary.get('divergent', 0)
-            kpis['sults_source'] = sults_crosscheck.get('source', 'SULTS API')
-        matches_for_fallback = sults_crosscheck.get('matches') or []
-        if matches_for_fallback:
-            origem_counts = {}
-            for entry in matches_for_fallback:
-                origem = normalize_origin_label(entry.get('sults_origem'))
-                origem_counts[origem] = origem_counts.get(origem, 0) + 1
-            source_distribution = [
-                {'label': label, 'value': count}
-                for label, count in sorted(origem_counts.items(), key=lambda x: x[1], reverse=True)
-            ]
-            owner_counts = {}
-            for entry in matches_for_fallback:
-                owner_label = normalize_owner_label(entry.get('responsavel'))
-                owner_counts[owner_label] = owner_counts.get(owner_label, 0) + 1
-            owner_distribution = [
-                {'label': label, 'value': count}
-                for label, count in sorted(owner_counts.items(), key=lambda x: x[1], reverse=True)
-            ]
+    # Processa dados SULTS apenas se disponível
+    try:
+        if sults_crosscheck.get('available'):
+            summary = sults_crosscheck.get('summary', {})
+            if summary:
+                status_counts = summary.get('status_counts', {})
+                if status_counts:
+                    sults_status_distribution = []
+                    for key in ['aberto', 'perdido', 'ganho', 'outros']:
+                        value = status_counts.get(key)
+                        if value:
+                            sults_status_distribution.append({
+                                'label': build_status_label(key),
+                                'value': int(value)
+                            })
+                    distributions['sults_status'] = sults_status_distribution
+                    kpis['sults_status_counts'] = status_counts
+                    kpis['sults_matched'] = summary.get('matched', 0)
+                    kpis['sults_divergent'] = summary.get('divergent', 0)
+                    kpis['sults_source'] = sults_crosscheck.get('source', 'SULTS API')
+            matches_for_fallback = sults_crosscheck.get('matches') or []
+            if matches_for_fallback:
+                origem_counts = {}
+                for entry in matches_for_fallback:
+                    origem = normalize_origin_label(entry.get('sults_origem'))
+                    origem_counts[origem] = origem_counts.get(origem, 0) + 1
+                source_distribution = [
+                    {'label': label, 'value': count}
+                    for label, count in sorted(origem_counts.items(), key=lambda x: x[1], reverse=True)
+                ]
+                owner_counts = {}
+                for entry in matches_for_fallback:
+                    owner_label = normalize_owner_label(entry.get('responsavel'))
+                    owner_counts[owner_label] = owner_counts.get(owner_label, 0) + 1
+                owner_distribution = [
+                    {'label': label, 'value': count}
+                    for label, count in sorted(owner_counts.items(), key=lambda x: x[1], reverse=True)
+                ]
+    except Exception as e:
+        print(f"Erro ao processar dados SULTS (não bloqueante): {e}")
+        # Continua sem os dados SULTS
     
     df = df.drop(columns=['_lead_date_dt'])
     if source_col:
