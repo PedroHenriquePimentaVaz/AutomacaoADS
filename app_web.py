@@ -1523,32 +1523,68 @@ def analyze_leads_dataframe(df):
             ]
             
             # Comparação temporal: mês atual vs mês anterior
-            from pandas import Period
-            current_month = Period(datetime.now(), freq='M')
-            previous_month = current_month - 1
-            
-            current_month_leads = monthly_counts.get(current_month, 0)
-            previous_month_leads = monthly_counts.get(previous_month, 0)
-            
-            # Calcula variação percentual
-            if previous_month_leads > 0:
-                growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
-            else:
-                growth_rate = 100.0 if current_month_leads > 0 else 0.0
-            
-            # Adiciona comparação temporal aos KPIs
-            kpis['temporal_comparison'] = {
-                'current_month': {
-                    'period': current_month.strftime('%m/%Y'),
-                    'leads': int(current_month_leads)
-                },
-                'previous_month': {
-                    'period': previous_month.strftime('%m/%Y'),
-                    'leads': int(previous_month_leads)
-                },
-                'growth_rate': round(growth_rate, 2),
-                'growth_absolute': int(current_month_leads - previous_month_leads)
-            }
+            try:
+                from pandas import Period
+                now = datetime.now()
+                current_month_period = Period(year=now.year, month=now.month, freq='M')
+                previous_month_period = current_month_period - 1
+                
+                # Converte períodos para string para comparação
+                current_month_str = current_month_period.strftime('%m/%Y')
+                previous_month_str = previous_month_period.strftime('%m/%Y')
+                
+                # Busca nos monthly_counts usando o período
+                current_month_leads = int(monthly_counts.get(current_month_period, 0))
+                previous_month_leads = int(monthly_counts.get(previous_month_period, 0))
+                
+                # Calcula variação percentual
+                if previous_month_leads > 0:
+                    growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
+                else:
+                    growth_rate = 100.0 if current_month_leads > 0 else 0.0
+                
+                # Adiciona comparação temporal aos KPIs
+                kpis['temporal_comparison'] = {
+                    'current_month': {
+                        'period': current_month_str,
+                        'leads': current_month_leads
+                    },
+                    'previous_month': {
+                        'period': previous_month_str,
+                        'leads': previous_month_leads
+                    },
+                    'growth_rate': round(growth_rate, 2),
+                    'growth_absolute': current_month_leads - previous_month_leads
+                }
+            except Exception as e:
+                # Fallback: usa apenas os últimos 2 meses disponíveis
+                print(f"Erro na comparação temporal: {e}")
+                if len(monthly_counts) >= 2:
+                    last_two = list(monthly_counts.items())[-2:]
+                    current_month_leads = int(last_two[-1][1]) if len(last_two) > 0 else 0
+                    previous_month_leads = int(last_two[0][1]) if len(last_two) > 1 else 0
+                    current_month_str = last_two[-1][0].strftime('%m/%Y') if len(last_two) > 0 else ''
+                    previous_month_str = last_two[0][0].strftime('%m/%Y') if len(last_two) > 1 else ''
+                    
+                    if previous_month_leads > 0:
+                        growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
+                    else:
+                        growth_rate = 100.0 if current_month_leads > 0 else 0.0
+                    
+                    kpis['temporal_comparison'] = {
+                        'current_month': {
+                            'period': current_month_str,
+                            'leads': current_month_leads
+                        },
+                        'previous_month': {
+                            'period': previous_month_str,
+                            'leads': previous_month_leads
+                        },
+                        'growth_rate': round(growth_rate, 2),
+                        'growth_absolute': current_month_leads - previous_month_leads
+                    }
+                else:
+                    kpis['temporal_comparison'] = None
     
     status_distribution = []
     source_distribution = []
@@ -2495,33 +2531,38 @@ def google_ads_upload():
                     summary_df['Data'] = pd.to_datetime(summary_df['Data'], errors='coerce')
                     summary_df = summary_df.dropna(subset=['Data'])
                     if not summary_df.empty:
-                        summary_df['Period'] = summary_df['Data'].dt.to_period('M')
-                        monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
-                        
-                        from pandas import Period
-                        current_month = Period(datetime.now(), freq='M')
-                        previous_month = current_month - 1
-                        
-                        current_month_count = int(monthly_counts.get(current_month, 0))
-                        previous_month_count = int(monthly_counts.get(previous_month, 0))
-                        
-                        if previous_month_count > 0:
-                            growth_rate = ((current_month_count - previous_month_count) / previous_month_count) * 100
-                        else:
-                            growth_rate = 100.0 if current_month_count > 0 else 0.0
-                        
-                        temporal_comparison = {
-                            'current_month': {
-                                'period': current_month.strftime('%m/%Y'),
-                                'count': current_month_count
-                            },
-                            'previous_month': {
-                                'period': previous_month.strftime('%m/%Y'),
-                                'count': previous_month_count
-                            },
-                            'growth_rate': round(growth_rate, 2),
-                            'growth_absolute': current_month_count - previous_month_count
-                        }
+                        try:
+                            from pandas import Period
+                            summary_df['Period'] = summary_df['Data'].dt.to_period('M')
+                            monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
+                            
+                            now = datetime.now()
+                            current_month_period = Period(year=now.year, month=now.month, freq='M')
+                            previous_month_period = current_month_period - 1
+                            
+                            current_month_count = int(monthly_counts.get(current_month_period, 0))
+                            previous_month_count = int(monthly_counts.get(previous_month_period, 0))
+                            
+                            if previous_month_count > 0:
+                                growth_rate = ((current_month_count - previous_month_count) / previous_month_count) * 100
+                            else:
+                                growth_rate = 100.0 if current_month_count > 0 else 0.0
+                            
+                            temporal_comparison = {
+                                'current_month': {
+                                    'period': current_month_period.strftime('%m/%Y'),
+                                    'count': current_month_count
+                                },
+                                'previous_month': {
+                                    'period': previous_month_period.strftime('%m/%Y'),
+                                    'count': previous_month_count
+                                },
+                                'growth_rate': round(growth_rate, 2),
+                                'growth_absolute': current_month_count - previous_month_count
+                            }
+                        except Exception as e:
+                            print(f"Erro na comparação temporal Google Ads: {e}")
+                            temporal_comparison = {}
             
             # Calcula KPIs - apenas contagens
             kpis = {}
