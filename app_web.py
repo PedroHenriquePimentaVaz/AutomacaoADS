@@ -1493,6 +1493,13 @@ def analyze_leads_dataframe(df):
     
     total_leads = int(len(df))
     
+    # Inicializa kpis antes de usar
+    kpis = {
+        'total_leads': total_leads,
+        'leads_last_30_days': 0,
+        'leads_without_date': total_leads
+    }
+    
     leads_last_30_days = 0
     leads_without_date = total_leads
     monthly_trend = []

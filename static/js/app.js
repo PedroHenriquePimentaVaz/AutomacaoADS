@@ -54,6 +54,8 @@ function formatNumber(value) {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
+    // Garante que autoLeadsUploadBtn está definido
+    autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
     if (!autoLeadsUploadBtn) {
         const buttonsContainer = document.querySelector('.auto-upload-buttons');
         if (buttonsContainer) {
@@ -2940,6 +2942,11 @@ function initializeAutoUpload() {
     const autoUploadBtn = document.getElementById('autoUploadBtn');
     const googleAdsUploadBtn = document.getElementById('googleAdsUploadBtn');
     
+    // Garante que autoLeadsUploadBtn está definido
+    if (!autoLeadsUploadBtn) {
+        autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
+    }
+    
     if (autoUploadBtn) {
         autoUploadBtn.addEventListener('click', handleAutoUpload);
     }
@@ -2950,6 +2957,8 @@ function initializeAutoUpload() {
     
     if (autoLeadsUploadBtn) {
         autoLeadsUploadBtn.addEventListener('click', handleLeadsAutoUpload);
+    } else {
+        console.error('Botão autoLeadsUploadBtn não encontrado!');
     }
 }
 
@@ -3250,10 +3259,19 @@ async function handleGoogleAdsUpload() {
 }
 
 async function handleLeadsAutoUpload() {
-    if (!autoLeadsUploadBtn) return;
+    if (!autoLeadsUploadBtn) {
+        autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
+        if (!autoLeadsUploadBtn) {
+            console.error('Botão autoLeadsUploadBtn não encontrado!');
+            showNotification('Erro: botão não encontrado', 'error');
+            return;
+        }
+    }
+    
     const originalText = autoLeadsUploadBtn.innerHTML;
     
     try {
+        showLoading();
         autoLeadsUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
         autoLeadsUploadBtn.disabled = true;
         
@@ -3264,23 +3282,33 @@ async function handleLeadsAutoUpload() {
             }
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const result = await response.json();
         console.log('Response from auto-upload-leads:', result);
         
-        if (result.success) {
+        if (result.success && result.data) {
             currentLeadsData = result.data;
             filteredLeadsData = currentLeadsData;
             showLeadsDashboard();
             showNotification(result.message || 'Leads carregados automaticamente do Google Drive!', 'success');
         } else {
-            showNotification(result.error || 'Erro ao carregar leads automaticamente', 'error');
+            const errorMsg = result.error || 'Erro ao carregar leads automaticamente';
+            console.error('Erro na resposta:', errorMsg);
+            showUpload();
+            showNotification(errorMsg, 'error');
         }
     } catch (error) {
         console.error('Erro no auto upload de leads:', error);
-        showNotification('Erro de conexão ao carregar leads automaticamente', 'error');
+        showUpload();
+        showNotification(`Erro de conexão: ${error.message}`, 'error');
     } finally {
-        autoLeadsUploadBtn.innerHTML = originalText;
-        autoLeadsUploadBtn.disabled = false;
+        if (autoLeadsUploadBtn) {
+            autoLeadsUploadBtn.innerHTML = originalText;
+            autoLeadsUploadBtn.disabled = false;
+        }
     }
 }
 
