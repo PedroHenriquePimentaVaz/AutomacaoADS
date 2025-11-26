@@ -543,21 +543,21 @@ def clean_dataframe_for_json(df, max_rows=2000):
     except Exception as e:
         print(f"Erro na conversão otimizada, usando método fallback: {e}")
         # Fallback para método antigo se houver erro (limitado)
-        cleaned_data = []
-        for _, row in df.head(500).iterrows():  # Limita a 500 no fallback
-            clean_row = {}
-            for col, value in row.items():
-                if pd.isna(value):
-                    if any(keyword in col.upper() for keyword in numeric_keywords):
-                        clean_row[col] = 0.0
-                    else:
-                        clean_row[col] = None
-                elif isinstance(value, (int, float)):
-                    clean_row[col] = float(value) if not pd.isna(value) else 0.0
+    cleaned_data = []
+    for _, row in df.head(500).iterrows():  # Limita a 500 no fallback
+        clean_row = {}
+        for col, value in row.items():
+            if pd.isna(value):
+                if any(keyword in col.upper() for keyword in numeric_keywords):
+                    clean_row[col] = 0.0
                 else:
-                    clean_row[col] = str(value)
-            cleaned_data.append(clean_row)
-        return cleaned_data
+                    clean_row[col] = None
+            elif isinstance(value, (int, float)):
+                clean_row[col] = float(value) if not pd.isna(value) else 0.0
+            else:
+                clean_row[col] = str(value)
+        cleaned_data.append(clean_row)
+    return cleaned_data
 
 def analyze_google_ads_funnels(df):
     """Gera métricas financeiras da aba Controle Google ADS 2."""
@@ -1493,13 +1493,6 @@ def analyze_leads_dataframe(df):
     
     total_leads = int(len(df))
     
-    # Inicializa kpis antes de usar
-    kpis = {
-        'total_leads': total_leads,
-        'leads_last_30_days': 0,
-        'leads_without_date': total_leads
-    }
-    
     leads_last_30_days = 0
     leads_without_date = total_leads
     monthly_trend = []
@@ -1523,68 +1516,31 @@ def analyze_leads_dataframe(df):
             ]
             
             # Comparação temporal: mês atual vs mês anterior
-            try:
-                from pandas import Period
-                now = datetime.now()
-                current_month_period = Period(year=now.year, month=now.month, freq='M')
-                previous_month_period = current_month_period - 1
-                
-                # Converte períodos para string para comparação
-                current_month_str = current_month_period.strftime('%m/%Y')
-                previous_month_str = previous_month_period.strftime('%m/%Y')
-                
-                # Busca nos monthly_counts usando o período
-                current_month_leads = int(monthly_counts.get(current_month_period, 0))
-                previous_month_leads = int(monthly_counts.get(previous_month_period, 0))
-                
-                # Calcula variação percentual
-                if previous_month_leads > 0:
-                    growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
-                else:
-                    growth_rate = 100.0 if current_month_leads > 0 else 0.0
-                
-                # Adiciona comparação temporal aos KPIs
-                kpis['temporal_comparison'] = {
-                    'current_month': {
-                        'period': current_month_str,
-                        'leads': current_month_leads
-                    },
-                    'previous_month': {
-                        'period': previous_month_str,
-                        'leads': previous_month_leads
-                    },
-                    'growth_rate': round(growth_rate, 2),
-                    'growth_absolute': current_month_leads - previous_month_leads
-                }
-            except Exception as e:
-                # Fallback: usa apenas os últimos 2 meses disponíveis
-                print(f"Erro na comparação temporal: {e}")
-                if len(monthly_counts) >= 2:
-                    last_two = list(monthly_counts.items())[-2:]
-                    current_month_leads = int(last_two[-1][1]) if len(last_two) > 0 else 0
-                    previous_month_leads = int(last_two[0][1]) if len(last_two) > 1 else 0
-                    current_month_str = last_two[-1][0].strftime('%m/%Y') if len(last_two) > 0 else ''
-                    previous_month_str = last_two[0][0].strftime('%m/%Y') if len(last_two) > 1 else ''
-                    
-                    if previous_month_leads > 0:
-                        growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
-                    else:
-                        growth_rate = 100.0 if current_month_leads > 0 else 0.0
-                    
-                    kpis['temporal_comparison'] = {
-                        'current_month': {
-                            'period': current_month_str,
-                            'leads': current_month_leads
-                        },
-                        'previous_month': {
-                            'period': previous_month_str,
-                            'leads': previous_month_leads
-                        },
-                        'growth_rate': round(growth_rate, 2),
-                        'growth_absolute': current_month_leads - previous_month_leads
-                    }
-                else:
-                    kpis['temporal_comparison'] = None
+            current_month = datetime.now().to_period('M')
+            previous_month = (current_month - 1)
+            
+            current_month_leads = monthly_counts.get(current_month, 0)
+            previous_month_leads = monthly_counts.get(previous_month, 0)
+            
+            # Calcula variação percentual
+            if previous_month_leads > 0:
+                growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
+            else:
+                growth_rate = 100.0 if current_month_leads > 0 else 0.0
+            
+            # Adiciona comparação temporal aos KPIs
+            kpis['temporal_comparison'] = {
+                'current_month': {
+                    'period': current_month.strftime('%m/%Y'),
+                    'leads': int(current_month_leads)
+                },
+                'previous_month': {
+                    'period': previous_month.strftime('%m/%Y'),
+                    'leads': int(previous_month_leads)
+                },
+                'growth_rate': round(growth_rate, 2),
+                'growth_absolute': int(current_month_leads - previous_month_leads)
+            }
     
     status_distribution = []
     source_distribution = []
@@ -1689,8 +1645,8 @@ def analyze_leads_dataframe(df):
     
     mql_to_lead_rate = round((tag_mqls / total_leads) * 100, 2) if total_leads > 0 else 0.0
     
-    # Atualiza kpis com valores calculados (já inicializado anteriormente)
-    kpis.update({
+    kpis = {
+        'total_leads': total_leads,
         'leads_last_30_days': leads_last_30_days,
         'leads_without_date': leads_without_date,
         'unique_statuses': unique_statuses,
@@ -1710,71 +1666,79 @@ def analyze_leads_dataframe(df):
         'owner': owner_distribution
     }
 
-    # Conciliação SULTS - DESABILITADA por padrão para melhor performance
-    # Pode ser habilitada depois via endpoint separado se necessário
+    # Conciliação SULTS - HABILITADA automaticamente
+    # Limita a conciliação para não impactar muito a performance
     sults_crosscheck = {
         'available': False,
-        'message': 'Conciliação com SULTS desabilitada para melhor performance. Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
+        'message': 'Conciliação com SULTS em andamento...'
     }
     
-    # Opcional: processa conciliação apenas se tiver poucos leads E se solicitado explicitamente
-    # Comentado para melhor performance - descomente se necessário
-    # if len(df) < 500 and request.args.get('sults_sync') == 'true':
-    #     try:
-    #         sults_crosscheck = crosscheck_leads_with_sults(
-    #             df,
-    #             name_col=name_col,
-    #             status_col=status_col,
-    #             email_col=email_col,
-    #             phone_col=phone_col
-    #         )
-    #     except Exception as e:
-    #         print(f"Erro na conciliação SULTS (não bloqueante): {e}")
-    #         sults_crosscheck = {
-    #             'available': False,
-    #             'message': 'Conciliação com SULTS não disponível no momento.'
-    #         }
-    # Processa dados SULTS apenas se disponível
-    try:
-        if sults_crosscheck.get('available'):
-            summary = sults_crosscheck.get('summary', {})
-            if summary:
-                status_counts = summary.get('status_counts', {})
-                if status_counts:
-                    sults_status_distribution = []
-                    for key in ['aberto', 'perdido', 'ganho', 'outros']:
-                        value = status_counts.get(key)
-                        if value:
-                            sults_status_distribution.append({
-                                'label': build_status_label(key),
-                                'value': int(value)
-                            })
-                    distributions['sults_status'] = sults_status_distribution
-                    kpis['sults_status_counts'] = status_counts
-                    kpis['sults_matched'] = summary.get('matched', 0)
-                    kpis['sults_divergent'] = summary.get('divergent', 0)
-                    kpis['sults_source'] = sults_crosscheck.get('source', 'SULTS API')
-            matches_for_fallback = sults_crosscheck.get('matches') or []
-            if matches_for_fallback:
-                origem_counts = {}
-                for entry in matches_for_fallback:
-                    origem = normalize_origin_label(entry.get('sults_origem'))
-                    origem_counts[origem] = origem_counts.get(origem, 0) + 1
-                source_distribution = [
-                    {'label': label, 'value': count}
-                    for label, count in sorted(origem_counts.items(), key=lambda x: x[1], reverse=True)
-                ]
-                owner_counts = {}
-                for entry in matches_for_fallback:
-                    owner_label = normalize_owner_label(entry.get('responsavel'))
-                    owner_counts[owner_label] = owner_counts.get(owner_label, 0) + 1
-                owner_distribution = [
-                    {'label': label, 'value': count}
-                    for label, count in sorted(owner_counts.items(), key=lambda x: x[1], reverse=True)
-                ]
-    except Exception as e:
-        print(f"Erro ao processar dados SULTS (não bloqueante): {e}")
-        # Continua sem os dados SULTS
+    # Processa conciliação automaticamente se SULTS estiver disponível
+    # Limita a 2000 leads para manter performance aceitável
+    if SULTS_AVAILABLE and len(df) <= 2000:
+        try:
+            print(f"[SULTS] Iniciando conciliação automática para {len(df)} leads...")
+            sults_crosscheck = crosscheck_leads_with_sults(
+                df,
+                name_col=name_col,
+                status_col=status_col,
+                email_col=email_col,
+                phone_col=phone_col
+            )
+            print(f"[SULTS] Conciliação concluída: {sults_crosscheck.get('summary', {}).get('matched', 0)} leads encontrados")
+        except Exception as e:
+            print(f"[SULTS] Erro na conciliação automática (não bloqueante): {e}")
+            import traceback
+            traceback.print_exc()
+            sults_crosscheck = {
+                'available': False,
+                'message': f'Conciliação com SULTS não disponível: {str(e)[:100]}'
+            }
+    elif SULTS_AVAILABLE and len(df) > 2000:
+        sults_crosscheck = {
+            'available': False,
+            'message': f'Conciliação automática desabilitada para {len(df)} leads (limite: 2000). Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
+        }
+    elif not SULTS_AVAILABLE:
+        sults_crosscheck = {
+            'available': False,
+            'message': 'Integração SULTS não disponível. Verifique a configuração da API.'
+        }
+    if sults_crosscheck.get('available'):
+        summary = sults_crosscheck.get('summary', {})
+        status_counts = summary.get('status_counts', {})
+        if status_counts:
+            sults_status_distribution = []
+            for key in ['aberto', 'perdido', 'ganho', 'outros']:
+                value = status_counts.get(key)
+                if value:
+                    sults_status_distribution.append({
+                        'label': build_status_label(key),
+                        'value': int(value)
+                    })
+            distributions['sults_status'] = sults_status_distribution
+            kpis['sults_status_counts'] = status_counts
+            kpis['sults_matched'] = summary.get('matched', 0)
+            kpis['sults_divergent'] = summary.get('divergent', 0)
+            kpis['sults_source'] = sults_crosscheck.get('source', 'SULTS API')
+        matches_for_fallback = sults_crosscheck.get('matches') or []
+        if matches_for_fallback:
+            origem_counts = {}
+            for entry in matches_for_fallback:
+                origem = normalize_origin_label(entry.get('sults_origem'))
+                origem_counts[origem] = origem_counts.get(origem, 0) + 1
+            source_distribution = [
+                {'label': label, 'value': count}
+                for label, count in sorted(origem_counts.items(), key=lambda x: x[1], reverse=True)
+            ]
+            owner_counts = {}
+            for entry in matches_for_fallback:
+                owner_label = normalize_owner_label(entry.get('responsavel'))
+                owner_counts[owner_label] = owner_counts.get(owner_label, 0) + 1
+            owner_distribution = [
+                {'label': label, 'value': count}
+                for label, count in sorted(owner_counts.items(), key=lambda x: x[1], reverse=True)
+            ]
     
     df = df.drop(columns=['_lead_date_dt'])
     if source_col:
@@ -1844,13 +1808,7 @@ def debug_credentials():
 
 @app.route('/')
 def index():
-    try:
-        return render_template('index.html')
-    except Exception as e:
-        import traceback
-        error_msg = f"Erro ao renderizar template: {str(e)}\n{traceback.format_exc()}"
-        print(error_msg)
-        return f"<h1>Erro</h1><pre>{error_msg}</pre>", 500
+    return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -2372,28 +2330,28 @@ def auto_upload():
                 else:
                     print("No creative column found, skipping creative analysis")
                     creative_analysis = {}
-                
-                result = {
-                    'success': True,
-                    'data': {
-                        'columns': list(df.columns),
-                        'total_rows': len(df),
-                        'date_column': date_col,
-                        'creative_columns': creative_cols,
-                        'cost_columns': cost_cols,
-                        'leads_columns': leads_cols,
-                        'summary': summary_data,
-                        'kpis': kpis,
-                        'creative_analysis': creative_analysis,
+            
+            result = {
+                'success': True,
+                'data': {
+                    'columns': list(df.columns),
+                    'total_rows': len(df),
+                    'date_column': date_col,
+                    'creative_columns': creative_cols,
+                    'cost_columns': cost_cols,
+                    'leads_columns': leads_cols,
+                    'summary': summary_data,
+                    'kpis': kpis,
+                    'creative_analysis': creative_analysis,
                         'raw_data': clean_dataframe_for_json(df, max_rows=2000)  # Limita para performance
-                    }
                 }
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'Planilha {file_name} carregada automaticamente do Google Drive!',
-                    'data': result['data']
-                })
+            }
+            
+            return jsonify({
+                'success': True,
+                'message': f'Planilha {file_name} carregada automaticamente do Google Drive!',
+                'data': result['data']
+            })
                 
         except Exception as e:
             print(f"Erro ao processar arquivo Excel: {str(e)}")
@@ -2537,38 +2495,32 @@ def google_ads_upload():
                     summary_df['Data'] = pd.to_datetime(summary_df['Data'], errors='coerce')
                     summary_df = summary_df.dropna(subset=['Data'])
                     if not summary_df.empty:
-                        try:
-                            from pandas import Period
-                            summary_df['Period'] = summary_df['Data'].dt.to_period('M')
-                            monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
-                            
-                            now = datetime.now()
-                            current_month_period = Period(year=now.year, month=now.month, freq='M')
-                            previous_month_period = current_month_period - 1
-                            
-                            current_month_count = int(monthly_counts.get(current_month_period, 0))
-                            previous_month_count = int(monthly_counts.get(previous_month_period, 0))
-                            
-                            if previous_month_count > 0:
-                                growth_rate = ((current_month_count - previous_month_count) / previous_month_count) * 100
-                            else:
-                                growth_rate = 100.0 if current_month_count > 0 else 0.0
-                            
-                            temporal_comparison = {
-                                'current_month': {
-                                    'period': current_month_period.strftime('%m/%Y'),
-                                    'count': current_month_count
-                                },
-                                'previous_month': {
-                                    'period': previous_month_period.strftime('%m/%Y'),
-                                    'count': previous_month_count
-                                },
-                                'growth_rate': round(growth_rate, 2),
-                                'growth_absolute': current_month_count - previous_month_count
-                            }
-                        except Exception as e:
-                            print(f"Erro na comparação temporal Google Ads: {e}")
-                            temporal_comparison = {}
+                        summary_df['Period'] = summary_df['Data'].dt.to_period('M')
+                        monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
+                        
+                        current_month = datetime.now().to_period('M')
+                        previous_month = (current_month - 1)
+                        
+                        current_month_count = int(monthly_counts.get(current_month, 0))
+                        previous_month_count = int(monthly_counts.get(previous_month, 0))
+                        
+                        if previous_month_count > 0:
+                            growth_rate = ((current_month_count - previous_month_count) / previous_month_count) * 100
+                        else:
+                            growth_rate = 100.0 if current_month_count > 0 else 0.0
+                        
+                        temporal_comparison = {
+                            'current_month': {
+                                'period': current_month.strftime('%m/%Y'),
+                                'count': current_month_count
+                            },
+                            'previous_month': {
+                                'period': previous_month.strftime('%m/%Y'),
+                                'count': previous_month_count
+                            },
+                            'growth_rate': round(growth_rate, 2),
+                            'growth_absolute': current_month_count - previous_month_count
+                        }
             
             # Calcula KPIs - apenas contagens
             kpis = {}
@@ -3923,17 +3875,6 @@ def get_performance_optimization():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.errorhandler(500)
-def internal_error(error):
-    import traceback
-    error_msg = f"Erro interno: {str(error)}\n{traceback.format_exc()}"
-    print(error_msg)
-    return jsonify({'error': 'Erro interno do servidor', 'details': str(error)}), 500
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Rota não encontrada'}), 404
 
 if __name__ == '__main__':
     print(f"Templates path: {app.template_folder}")
