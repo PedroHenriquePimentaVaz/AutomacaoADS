@@ -57,15 +57,30 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 2. Certifique-se de que o service account tem acesso aos arquivos no Google Drive
 
 #### Para Deploy no Vercel (ou outros serviços cloud):
+
+**Método Rápido (Recomendado):**
+```bash
+python prepare_vercel_credentials.py
+```
+O script irá gerar o valor correto para copiar e colar no Vercel.
+
+**Método Manual:**
 1. Abra o arquivo JSON de credenciais (`sixth-now-475017-k8-785034518ab7.json`)
-2. Copie todo o conteúdo do JSON (como uma string)
+2. Copie **todo** o conteúdo do JSON (incluindo as chaves `{` e `}`)
 3. No painel do Vercel, vá em **Settings** → **Environment Variables**
 4. Adicione uma nova variável:
    - **Nome**: `GOOGLE_CREDENTIALS_JSON`
-   - **Valor**: Cole todo o conteúdo do JSON (como uma string única)
-5. Certifique-se de que o service account tem acesso aos arquivos no Google Drive
+   - **Valor**: Cole todo o conteúdo do JSON (como uma string única, sem quebras de linha)
+   - **Ambientes**: Selecione Production, Preview e Development
+5. Clique em **Save**
+6. Faça um novo deploy ou aguarde o redeploy automático
 
-**Nota**: O código agora suporta ambos os métodos automaticamente:
+**⚠️ Importante:**
+- O JSON deve ser colado como uma string única (sem quebras de linha)
+- Certifique-se de que o service account tem acesso aos arquivos no Google Drive
+- Após configurar, acesse `/api/debug/credentials` para verificar se as credenciais foram carregadas corretamente
+
+**Nota**: O código suporta ambos os métodos automaticamente:
 - Se `GOOGLE_CREDENTIALS_JSON` estiver definido, usa a variável de ambiente
 - Caso contrário, tenta carregar do arquivo local
 

@@ -383,9 +383,23 @@ def load_drive_credentials():
         credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
         if credentials_json:
             try:
+                print(f"[DEBUG] GOOGLE_CREDENTIALS_JSON encontrada (tamanho: {len(credentials_json)} chars)")
+                # Limpa o JSON (remove espaços extras no início/fim)
+                credentials_json = credentials_json.strip()
+                
                 # Parse do JSON da variável de ambiente
                 import json as json_lib
                 credentials_info = json_lib.loads(credentials_json)
+                
+                # Valida campos obrigatórios
+                required_fields = ['type', 'project_id', 'private_key', 'client_email']
+                missing_fields = [field for field in required_fields if field not in credentials_info]
+                if missing_fields:
+                    print(f"[ERROR] Campos obrigatórios faltando: {missing_fields}")
+                    raise ValueError(f"Campos obrigatórios faltando: {missing_fields}")
+                
+                print(f"[DEBUG] JSON parseado com sucesso. Type: {credentials_info.get('type')}, Email: {credentials_info.get('client_email')}")
+                
                 credentials = service_account.Credentials.from_service_account_info(
                     credentials_info,
                     scopes=[
@@ -393,11 +407,20 @@ def load_drive_credentials():
                         'https://www.googleapis.com/auth/spreadsheets.readonly'
                     ]
                 )
-                print("Credenciais carregadas de variável de ambiente GOOGLE_CREDENTIALS_JSON")
+                print("[SUCCESS] Credenciais carregadas de variável de ambiente GOOGLE_CREDENTIALS_JSON")
                 return credentials
+            except json_lib.JSONDecodeError as json_error:
+                print(f"[ERROR] Erro ao fazer parse do JSON: {json_error}")
+                print(f"[DEBUG] Primeiros 200 chars do JSON: {credentials_json[:200]}")
+                import traceback
+                traceback.print_exc()
             except Exception as env_error:
-                print(f"Erro ao carregar credenciais da variável de ambiente: {env_error}")
+                print(f"[ERROR] Erro ao carregar credenciais da variável de ambiente: {env_error}")
+                import traceback
+                traceback.print_exc()
                 # Continua para tentar método 2
+        else:
+            print("[DEBUG] GOOGLE_CREDENTIALS_JSON não encontrada, tentando arquivo...")
         
         # Método 2: Tentar carregar de arquivo (para desenvolvimento local)
         credentials_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
@@ -408,6 +431,7 @@ def load_drive_credentials():
         
         # Verifica se o arquivo existe
         if os.path.exists(credentials_file):
+            print(f"[DEBUG] Tentando carregar credenciais de arquivo: {credentials_file}")
             credentials = service_account.Credentials.from_service_account_file(
                 credentials_file,
                 scopes=[
@@ -415,18 +439,18 @@ def load_drive_credentials():
                     'https://www.googleapis.com/auth/spreadsheets.readonly'
                 ]
             )
-            print(f"Credenciais carregadas de arquivo: {credentials_file}")
+            print(f"[SUCCESS] Credenciais carregadas de arquivo: {credentials_file}")
             return credentials
         else:
-            print(f"Arquivo de credenciais não encontrado: {credentials_file}")
-            print(f"Diretório atual: {os.getcwd()}")
+            print(f"[ERROR] Arquivo de credenciais não encontrado: {credentials_file}")
+            print(f"[DEBUG] Diretório atual: {os.getcwd()}")
             # Não lista diretório no Vercel para evitar erro
             if os.path.exists('.'):
                 try:
                     files = [f for f in os.listdir('.') if f.endswith('.json')]
-                    print(f"Arquivos JSON encontrados: {files}")
-                except:
-                    pass
+                    print(f"[DEBUG] Arquivos JSON encontrados: {files}")
+                except Exception as list_error:
+                    print(f"[DEBUG] Erro ao listar arquivos: {list_error}")
             return None
             
     except Exception as e:
@@ -1711,6 +1735,35 @@ def analyze_leads_dataframe(df):
     
     # Limpa memória após retornar
     gc.collect()
+
+@app.route('/api/debug/credentials')
+def debug_credentials():
+    """Endpoint de debug para verificar status das credenciais"""
+    debug_info = {
+        'has_google_credentials_json': bool(os.getenv('GOOGLE_CREDENTIALS_JSON')),
+        'google_credentials_json_length': len(os.getenv('GOOGLE_CREDENTIALS_JSON', '')),
+        'has_google_application_credentials': bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS')),
+        'google_application_credentials_value': os.getenv('GOOGLE_APPLICATION_CREDENTIALS', ''),
+        'current_directory': os.getcwd(),
+        'credentials_loaded': False,
+        'credentials_source': None,
+        'error': None
+    }
+    
+    try:
+        credentials = load_drive_credentials()
+        if credentials:
+            debug_info['credentials_loaded'] = True
+            debug_info['credentials_source'] = 'GOOGLE_CREDENTIALS_JSON' if os.getenv('GOOGLE_CREDENTIALS_JSON') else 'file'
+            debug_info['credentials_email'] = getattr(credentials, 'service_account_email', 'N/A')
+        else:
+            debug_info['error'] = 'Credenciais não foram carregadas'
+    except Exception as e:
+        debug_info['error'] = str(e)
+        import traceback
+        debug_info['traceback'] = traceback.format_exc()
+    
+    return jsonify(debug_info)
 
 @app.route('/')
 def index():
