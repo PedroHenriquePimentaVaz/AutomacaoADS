@@ -183,6 +183,11 @@ function backToStart() {
 // KPIs rendering
 function renderKPIs() {
     if (!filteredData) return;
+    
+    // Renderiza comparação temporal se disponível
+    if (filteredData.kpis && filteredData.kpis.temporal_comparison) {
+        renderTemporalComparison(filteredData);
+    }
 
     const kpis = filteredData.kpis;
     const columns = filteredData.columns;
@@ -3338,4 +3343,181 @@ function showNotification(message, type = 'info') {
         notification.classList.remove('show');
         setTimeout(() => document.body.removeChild(notification), 300);
     }, 5000);
+}
+
+// Pipeline Kanban
+async function loadKanbanLeads() {
+    try {
+        const response = await fetch('/api/kanban/leads');
+        const result = await response.json();
+        
+        if (result.success) {
+            renderKanban(result.columns);
+            document.getElementById('kanbanSection').style.display = 'block';
+        } else {
+            showNotification(result.error || 'Erro ao carregar pipeline', 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar Kanban:', error);
+        showNotification('Erro ao carregar pipeline de leads', 'error');
+    }
+}
+
+function renderKanban(columns) {
+    const container = document.getElementById('kanbanContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    container.className = 'kanban-board';
+    
+    columns.forEach(column => {
+        const columnDiv = document.createElement('div');
+        columnDiv.className = 'kanban-column';
+        columnDiv.innerHTML = `
+            <div class="kanban-column-header">
+                <h3>${column.title}</h3>
+                <span class="kanban-count">${column.leads.length}</span>
+            </div>
+            <div class="kanban-column-body" data-phase="${column.id}">
+                ${column.leads.map(lead => `
+                    <div class="kanban-card" draggable="true" data-lead-id="${lead.id}">
+                        <div class="kanban-card-header">
+                            <strong>${lead.nome}</strong>
+                        </div>
+                        <div class="kanban-card-body">
+                            <p><i class="fas fa-envelope"></i> ${lead.email || '-'}</p>
+                            <p><i class="fas fa-phone"></i> ${lead.telefone || '-'}</p>
+                            <p><i class="fas fa-user"></i> ${lead.responsavel || 'Sem responsável'}</p>
+                            ${lead.valor > 0 ? `<p><i class="fas fa-dollar-sign"></i> R$ ${formatCurrency(lead.valor)}</p>` : ''}
+                        </div>
+                        <div class="kanban-card-actions">
+                            <button class="btn btn-sm btn-outline" onclick="openWhatsApp('${lead.telefone}', '${lead.nome}', '${column.title}')">
+                                <i class="fab fa-whatsapp"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="viewLeadDetails('${lead.id}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        container.appendChild(columnDiv);
+    });
+}
+
+// Comparação Temporal
+function renderTemporalComparison(data) {
+    const container = document.getElementById('temporalComparisonContent');
+    if (!container || !data) return;
+    
+    const comparison = data.temporal_comparison || {};
+    if (!comparison.current_month) {
+        container.innerHTML = '<p>Dados de comparação temporal não disponíveis.</p>';
+        return;
+    }
+    
+    const current = comparison.current_month;
+    const previous = comparison.previous_month;
+    const growth = comparison.growth_rate || 0;
+    const absolute = comparison.growth_absolute || 0;
+    
+    const growthClass = growth >= 0 ? 'positive' : 'negative';
+    const growthIcon = growth >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+    
+    container.innerHTML = `
+        <div class="comparison-cards">
+            <div class="comparison-card">
+                <h4>Mês Atual (${current.period})</h4>
+                <div class="comparison-value">${current.leads || current.count || 0}</div>
+                <p class="comparison-label">Leads/Criativos</p>
+            </div>
+            <div class="comparison-card">
+                <h4>Mês Anterior (${previous.period})</h4>
+                <div class="comparison-value">${previous.leads || previous.count || 0}</div>
+                <p class="comparison-label">Leads/Criativos</p>
+            </div>
+            <div class="comparison-card ${growthClass}">
+                <h4>Variação</h4>
+                <div class="comparison-value">
+                    <i class="fas ${growthIcon}"></i> ${Math.abs(growth).toFixed(1)}%
+                </div>
+                <p class="comparison-label">${absolute >= 0 ? '+' : ''}${absolute} unidades</p>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('temporalComparisonSection').style.display = 'block';
+}
+
+// Performance e Otimização
+async function loadPerformanceOptimization() {
+    try {
+        const response = await fetch('/api/performance/optimization');
+        const result = await response.json();
+        
+        if (result.success) {
+            renderPerformanceOptimization(result);
+            document.getElementById('performanceSection').style.display = 'block';
+        } else {
+            showNotification(result.message || 'Carregue dados de criativos primeiro', 'info');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar otimização:', error);
+        showNotification('Erro ao carregar análise de performance', 'error');
+    }
+}
+
+function renderPerformanceOptimization(data) {
+    const container = document.getElementById('performanceContent');
+    if (!container) return;
+    
+    const optimization = data.optimization || {};
+    const performance = data.performance || {};
+    const recommendations = data.recommendations || [];
+    
+    container.innerHTML = `
+        <div class="performance-summary">
+            <div class="performance-metric">
+                <h4>Total de Criativos</h4>
+                <div class="metric-value">${performance.total_creatives || 0}</div>
+            </div>
+            <div class="performance-metric excellent">
+                <h4>Excelentes</h4>
+                <div class="metric-value">${performance.excellent_count || 0}</div>
+            </div>
+            <div class="performance-metric good">
+                <h4>Bons</h4>
+                <div class="metric-value">${performance.good_count || 0}</div>
+            </div>
+            <div class="performance-metric bad">
+                <h4>Ruins</h4>
+                <div class="metric-value">${performance.bad_count || 0}</div>
+            </div>
+        </div>
+        
+        <div class="optimization-recommendations">
+            ${recommendations.map(rec => `
+                <div class="recommendation-card ${rec.type}">
+                    <h4>${rec.title}</h4>
+                    <p class="recommendation-count">${rec.count} criativo(s)</p>
+                    ${rec.creatives && rec.creatives.length > 0 ? `
+                        <div class="recommendation-list">
+                            ${rec.creatives.slice(0, 5).map(c => `
+                                <div class="recommendation-item">
+                                    <strong>${c.creative || c.name}</strong>
+                                    <span>CPL: R$ ${formatCurrency(c.CPL || 0)} | CPMQL: R$ ${formatCurrency(c.CPMQL || 0)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function viewLeadDetails(leadId) {
+    // Implementar modal com detalhes do lead
+    alert(`Detalhes do lead ${leadId} - Em desenvolvimento`);
 }

@@ -1514,6 +1514,33 @@ def analyze_leads_dataframe(df):
                 }
                 for period, count in monthly_counts.items()
             ]
+            
+            # Comparação temporal: mês atual vs mês anterior
+            current_month = datetime.now().to_period('M')
+            previous_month = (current_month - 1)
+            
+            current_month_leads = monthly_counts.get(current_month, 0)
+            previous_month_leads = monthly_counts.get(previous_month, 0)
+            
+            # Calcula variação percentual
+            if previous_month_leads > 0:
+                growth_rate = ((current_month_leads - previous_month_leads) / previous_month_leads) * 100
+            else:
+                growth_rate = 100.0 if current_month_leads > 0 else 0.0
+            
+            # Adiciona comparação temporal aos KPIs
+            kpis['temporal_comparison'] = {
+                'current_month': {
+                    'period': current_month.strftime('%m/%Y'),
+                    'leads': int(current_month_leads)
+                },
+                'previous_month': {
+                    'period': previous_month.strftime('%m/%Y'),
+                    'leads': int(previous_month_leads)
+                },
+                'growth_rate': round(growth_rate, 2),
+                'growth_absolute': int(current_month_leads - previous_month_leads)
+            }
     
     status_distribution = []
     source_distribution = []
@@ -1935,6 +1962,38 @@ def upload_file():
                 creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
                 creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
                 
+                # Análise de Performance e Otimização
+                avg_cpl = creative_stats['CPL'].replace([np.inf, -np.inf, np.nan], 0).mean()
+                avg_cpmql = creative_stats['CPMQL'].replace([np.inf, -np.inf, np.nan], 0).mean()
+                
+                # Identifica criativos com performance abaixo da média
+                creative_stats['Performance_Status'] = 'Bom'
+                creative_stats.loc[
+                    (creative_stats['CPL'] > avg_cpl * 1.5) | 
+                    (creative_stats['CPMQL'] > avg_cpmql * 1.5) |
+                    (creative_stats['Total_Leads'] < 5),
+                    'Performance_Status'
+                ] = 'Ruim'
+                
+                creative_stats.loc[
+                    (creative_stats['CPL'] <= avg_cpl * 0.7) & 
+                    (creative_stats['CPMQL'] <= avg_cpmql * 0.7) &
+                    (creative_stats['Total_Leads'] >= 10),
+                    'Performance_Status'
+                ] = 'Excelente'
+                
+                # Sugestões de otimização
+                optimization_suggestions = {
+                    'pause_creatives': creative_stats[
+                        creative_stats['Performance_Status'] == 'Ruim'
+                    ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
+                    'scale_creatives': creative_stats[
+                        creative_stats['Performance_Status'] == 'Excelente'
+                    ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
+                    'avg_cpl': float(avg_cpl),
+                    'avg_cpmql': float(avg_cpmql)
+                }
+                
                 # Substitui inf e NaN por 0
                 creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
                 
@@ -1966,6 +2025,15 @@ def upload_file():
                 creative_analysis = {
                     'top_creatives': top_creatives,
                     'creative_details': clean_dataframe_for_json(creative_stats.head(20)),  # Top 20 criativos
+                    'optimization_suggestions': optimization_suggestions,
+                    'performance_analysis': {
+                        'total_creatives': len(creative_stats),
+                        'excellent_count': len(creative_stats[creative_stats['Performance_Status'] == 'Excelente']),
+                        'good_count': len(creative_stats[creative_stats['Performance_Status'] == 'Bom']),
+                        'bad_count': len(creative_stats[creative_stats['Performance_Status'] == 'Ruim']),
+                        'avg_cpl': float(avg_cpl),
+                        'avg_cpmql': float(avg_cpmql)
+                    },
                     'top_lead_creative': {
                         'name': str(top_lead_creative['creative']) if top_lead_creative is not None else 'N/A',
                         'leads': int(top_lead_creative['Total_Leads']) if top_lead_creative is not None else 0,
@@ -2391,6 +2459,7 @@ def google_ads_upload():
             
             # Calcula resumos baseado em Data_Processada
             summary_data = {}
+            temporal_comparison = {}
             if date_col:
                 # Conta registros únicos de data
                 date_counts = df['Data_Processada'].value_counts().sort_index()
@@ -2406,6 +2475,38 @@ def google_ads_upload():
                         'Criativos': int(row['Criativos']) if pd.notna(row['Criativos']) else 0
                     })
                 summary_data['temporal'] = temporal_records
+                
+                # Comparação temporal para Google Ads
+                if not summary_df.empty:
+                    summary_df['Data'] = pd.to_datetime(summary_df['Data'], errors='coerce')
+                    summary_df = summary_df.dropna(subset=['Data'])
+                    if not summary_df.empty:
+                        summary_df['Period'] = summary_df['Data'].dt.to_period('M')
+                        monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
+                        
+                        current_month = datetime.now().to_period('M')
+                        previous_month = (current_month - 1)
+                        
+                        current_month_count = int(monthly_counts.get(current_month, 0))
+                        previous_month_count = int(monthly_counts.get(previous_month, 0))
+                        
+                        if previous_month_count > 0:
+                            growth_rate = ((current_month_count - previous_month_count) / previous_month_count) * 100
+                        else:
+                            growth_rate = 100.0 if current_month_count > 0 else 0.0
+                        
+                        temporal_comparison = {
+                            'current_month': {
+                                'period': current_month.strftime('%m/%Y'),
+                                'count': current_month_count
+                            },
+                            'previous_month': {
+                                'period': previous_month.strftime('%m/%Y'),
+                                'count': previous_month_count
+                            },
+                            'growth_rate': round(growth_rate, 2),
+                            'growth_absolute': current_month_count - previous_month_count
+                        }
             
             # Calcula KPIs - apenas contagens
             kpis = {}
@@ -2413,6 +2514,7 @@ def google_ads_upload():
             total_mqls = df[leads_cols['mql']].sum()
             kpis['total_leads'] = int(total_leads) if not pd.isna(total_leads) else 0
             kpis['total_mqls'] = int(total_mqls) if not pd.isna(total_mqls) else 0
+            kpis['temporal_comparison'] = temporal_comparison
             
             funnels_analysis = analyze_google_ads_funnels(funnels_df)
             total_investimento = funnels_analysis['totals']['investimento']
@@ -3573,6 +3675,192 @@ def get_usuarios_disponiveis():
             'success': False,
             'error': f'Erro ao buscar usuários: {str(e)}'
         }), 500
+
+@app.route('/api/kanban/leads', methods=['GET'])
+def get_kanban_leads():
+    """Retorna leads organizados por fase para pipeline Kanban"""
+    try:
+        # Busca leads do SULTS ou da última análise de leads
+        leads = []
+        
+        # Tenta buscar do SULTS primeiro
+        if SULTS_AVAILABLE:
+            try:
+                client = SultsAPIClient()
+                sults_data = client.get_leads_by_status()
+                if sults_data.get('abertos'):
+                    for lead in sults_data['abertos'].get('leads', []):
+                        leads.append({
+                            'id': lead.get('id'),
+                            'nome': lead.get('nome', 'Sem nome'),
+                            'fase': lead.get('etapa', 'Sem fase'),
+                            'email': lead.get('email', ''),
+                            'telefone': lead.get('telefone', ''),
+                            'responsavel': lead.get('responsavel', ''),
+                            'status': 'aberto',
+                            'origem': lead.get('origem', ''),
+                            'data': lead.get('data_criacao', ''),
+                            'valor': lead.get('valor', 0),
+                            'cidade': lead.get('cidade', ''),
+                            'uf': lead.get('uf', '')
+                        })
+            except:
+                pass
+        
+        if not leads:
+            return jsonify({
+                'error': 'Nenhum lead encontrado. Carregue dados do SULTS primeiro.',
+                'columns': []
+            }), 404
+        
+        # Ordem das fases (customizável)
+        ordem_fases = {
+            'Lead MQL': 1, 'MQL': 1, 'Conexão': 2, 'Pre-call agendada': 3,
+            'Pre-call realizada': 4, 'Apresentação Modelo Agendada': 5,
+            'Apresentação Modelo Realizada': 6, 'Apresentação Financeira agendada': 7,
+            'Reunião Financeira Realizada': 8, 'Reunião Fundador agendada': 9,
+            'Aguardando decisão': 10, 'Contrato Franquia': 11
+        }
+        
+        # Agrupa leads por fase
+        kanban_columns = {}
+        for lead in leads:
+            fase = lead.get('fase', 'Sem fase') or 'Sem fase'
+            if fase not in kanban_columns:
+                kanban_columns[fase] = {
+                    'id': fase,
+                    'title': fase,
+                    'order': ordem_fases.get(fase, 999),
+                    'leads': []
+                }
+            
+            kanban_columns[fase]['leads'].append({
+                'id': lead.get('id') or f"lead_{len(kanban_columns[fase]['leads'])}",
+                'nome': lead.get('nome', 'Sem nome'),
+                'email': lead.get('email', ''),
+                'telefone': lead.get('telefone', ''),
+                'responsavel': lead.get('responsavel', ''),
+                'status': lead.get('status', ''),
+                'origem': lead.get('origem', ''),
+                'data': lead.get('data', ''),
+                'valor': lead.get('valor', 0),
+                'cidade': lead.get('cidade', ''),
+                'uf': lead.get('uf', '')
+            })
+        
+        # Ordena colunas
+        sorted_columns = sorted(kanban_columns.values(), key=lambda x: x['order'])
+        
+        return jsonify({
+            'success': True,
+            'columns': sorted_columns,
+            'total_leads': len(leads)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/integrations/meta-ads', methods=['GET'])
+def get_meta_ads_integration():
+    """Endpoint para integração com Meta Ads API"""
+    try:
+        # Requer: META_ADS_ACCESS_TOKEN, META_ADS_ACCOUNT_ID
+        meta_token = os.getenv('META_ADS_ACCESS_TOKEN')
+        account_id = os.getenv('META_ADS_ACCOUNT_ID')
+        
+        if not meta_token or not account_id:
+            return jsonify({
+                'available': False,
+                'message': 'Integração Meta Ads não configurada. Configure META_ADS_ACCESS_TOKEN e META_ADS_ACCOUNT_ID',
+                'setup_required': True,
+                'instructions': {
+                    'step1': 'Obtenha um Access Token do Meta Ads Manager',
+                    'step2': 'Configure META_ADS_ACCESS_TOKEN no .env',
+                    'step3': 'Configure META_ADS_ACCOUNT_ID no .env',
+                    'step4': 'Reinicie o servidor'
+                }
+            })
+        
+        # Estrutura para futura implementação da API real
+        # API do Meta: https://developers.facebook.com/docs/marketing-apis
+        return jsonify({
+            'available': True,
+            'message': 'Integração Meta Ads configurada',
+            'account_id': account_id,
+            'endpoints': {
+                'campaigns': '/api/integrations/meta-ads/campaigns',
+                'ads': '/api/integrations/meta-ads/ads',
+                'insights': '/api/integrations/meta-ads/insights',
+                'ad_sets': '/api/integrations/meta-ads/ad-sets'
+            },
+            'note': 'Implementação completa da API requer configuração adicional. Por enquanto, use o botão "Carregar Meta ADS" para upload manual.'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/integrations/list', methods=['GET'])
+def list_integrations():
+    """Lista todas as integrações disponíveis"""
+    integrations = {
+        'google_drive': {
+            'name': 'Google Drive',
+            'available': bool(os.getenv('GOOGLE_CREDENTIALS_JSON') or os.path.exists('sixth-now-475017-k8-785034518ab7.json')),
+            'status': 'active' if (os.getenv('GOOGLE_CREDENTIALS_JSON') or os.path.exists('sixth-now-475017-k8-785034518ab7.json')) else 'not_configured'
+        },
+        'sults': {
+            'name': 'SULTS API',
+            'available': SULTS_AVAILABLE,
+            'status': 'active' if SULTS_AVAILABLE and os.getenv('SULTS_API_TOKEN') else 'not_configured'
+        },
+        'meta_ads': {
+            'name': 'Meta Ads API',
+            'available': bool(os.getenv('META_ADS_ACCESS_TOKEN') and os.getenv('META_ADS_ACCOUNT_ID')),
+            'status': 'active' if (os.getenv('META_ADS_ACCESS_TOKEN') and os.getenv('META_ADS_ACCOUNT_ID')) else 'not_configured'
+        }
+    }
+    
+    return jsonify({
+        'success': True,
+        'integrations': integrations,
+        'total_available': sum(1 for i in integrations.values() if i['available']),
+        'total_configured': len(integrations)
+    })
+
+@app.route('/api/performance/optimization', methods=['GET'])
+def get_performance_optimization():
+    """Retorna sugestões de otimização de performance"""
+    try:
+        # Busca dados de criativos se disponíveis
+        if not currentData or not currentData.get('creative_analysis'):
+            return jsonify({
+                'available': False,
+                'message': 'Carregue dados de criativos primeiro'
+            })
+        
+        creative_analysis = currentData.get('creative_analysis', {})
+        optimization = creative_analysis.get('optimization_suggestions', {})
+        performance = creative_analysis.get('performance_analysis', {})
+        
+        return jsonify({
+            'success': True,
+            'optimization': optimization,
+            'performance': performance,
+            'recommendations': [
+                {
+                    'type': 'pause',
+                    'title': 'Pausar Criativos com Baixa Performance',
+                    'count': len(optimization.get('pause_creatives', [])),
+                    'creatives': optimization.get('pause_creatives', [])
+                },
+                {
+                    'type': 'scale',
+                    'title': 'Aumentar Investimento em Criativos Excelentes',
+                    'count': len(optimization.get('scale_creatives', [])),
+                    'creatives': optimization.get('scale_creatives', [])
+                }
+            ]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print(f"Templates path: {app.template_folder}")

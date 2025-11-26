@@ -666,6 +666,36 @@
                     <div id="leadsDetailContainer" class="leads-detail-container"></div>
                 </div>
 
+                <!-- Pipeline Kanban -->
+                <div class="analysis-section" id="kanbanSection" style="display: none;">
+                    <div class="section-header">
+                        <h2><i class="fas fa-columns"></i> Pipeline de Leads (Kanban)</h2>
+                        <button class="btn btn-sm btn-primary" onclick="loadKanbanLeads()">
+                            <i class="fas fa-sync"></i> Atualizar
+                        </button>
+                    </div>
+                    <div id="kanbanContainer" class="kanban-container"></div>
+                </div>
+
+                <!-- Comparação Temporal -->
+                <div class="analysis-section" id="temporalComparisonSection" style="display: none;">
+                    <div class="section-header">
+                        <h2><i class="fas fa-chart-line"></i> Comparação Temporal</h2>
+                    </div>
+                    <div id="temporalComparisonContent" class="temporal-comparison-content"></div>
+                </div>
+
+                <!-- Performance e Otimização -->
+                <div class="analysis-section" id="performanceSection" style="display: none;">
+                    <div class="section-header">
+                        <h2><i class="fas fa-tachometer-alt"></i> Performance e Otimização</h2>
+                        <button class="btn btn-sm btn-primary" onclick="loadPerformanceOptimization()">
+                            <i class="fas fa-sync"></i> Atualizar
+                        </button>
+                    </div>
+                    <div id="performanceContent" class="performance-content"></div>
+                </div>
+
                 <div class="table-card">
                     <div class="table-header">
                         <h3>Base Completa de Leads</h3>
