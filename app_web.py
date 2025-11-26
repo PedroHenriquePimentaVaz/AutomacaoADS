@@ -47,15 +47,15 @@ def _clear_old_cache():
     now = datetime.now()
     keys_to_remove = []
     for key, value in _DATA_CACHE.items():
-        if (now - value['timestamp']).total_seconds() > _CACHE_TTL:
+        if (now - value['timestamp']).total_seconds() > CACHE_TTL_SECONDS:
             keys_to_remove.append(key)
     for key in keys_to_remove:
         del _DATA_CACHE[key]
     
     # Se ainda estiver cheio, remove os mais antigos
-    if len(_DATA_CACHE) > _CACHE_MAX_SIZE:
+    if len(_DATA_CACHE) > CACHE_MAX_ENTRIES:
         sorted_items = sorted(_DATA_CACHE.items(), key=lambda x: x[1]['timestamp'])
-        for key, _ in sorted_items[:len(_DATA_CACHE) - _CACHE_MAX_SIZE]:
+        for key, _ in sorted_items[:len(_DATA_CACHE) - CACHE_MAX_ENTRIES]:
             del _DATA_CACHE[key]
     
     # Força limpeza de memória
@@ -66,7 +66,7 @@ def _get_from_cache(key):
     _clear_old_cache()
     if key in _DATA_CACHE:
         entry = _DATA_CACHE[key]
-        if (datetime.now() - entry['timestamp']).total_seconds() < _CACHE_TTL:
+        if (datetime.now() - entry['timestamp']).total_seconds() < CACHE_TTL_SECONDS:
             return entry['data']
         else:
             del _DATA_CACHE[key]
@@ -504,54 +504,85 @@ def download_file_from_drive(file_id, credentials):
         traceback.print_exc()
         return None, None
 
-def clean_dataframe_for_json(df, max_rows=2000):
-    """Limpa DataFrame removendo valores NaN para serialização JSON - OTIMIZADO"""
-    # Limita quantidade de linhas para não travar
+def clean_dataframe_for_json(df: pd.DataFrame, max_rows: int = MAX_ROWS_FOR_JSON) -> list:
+    """
+    Converte DataFrame para formato JSON otimizado.
+    
+    Clean Code Principles:
+    - Single Responsibility: Apenas converte DataFrame para JSON
+    - Performance: Usa operações vetorizadas ao invés de iterrows()
+    
+    Args:
+        df: DataFrame a ser convertido
+        max_rows: Limite máximo de linhas a processar
+        
+    Returns:
+        Lista de dicionários representando as linhas do DataFrame
+    """
     if len(df) > max_rows:
         df = df.head(max_rows)
-        print(f"Limitando dados JSON a {max_rows} linhas para melhor performance")
     
-    # Otimização: converte direto para dict sem iterrows (muito mais rápido)
     try:
-        # Substitui NaN por None de forma vetorizada
-        df_cleaned = df.copy()
+        df_cleaned = _normalize_dataframe_types(df)
+        df_cleaned = _fill_numeric_nulls(df_cleaned)
+        df_cleaned = _convert_datetime_columns(df_cleaned)
         
-        # Identifica colunas numéricas
-        numeric_keywords = ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL', 'INVESTIMENTO', 'CLIQUES', 'IMPRESSÕES']
-        numeric_cols = [col for col in df_cleaned.columns if any(kw in str(col).upper() for kw in numeric_keywords)]
-        
-        # Preenche NaN em colunas numéricas com 0
-        for col in numeric_cols:
-            if col in df_cleaned.columns:
-                df_cleaned[col] = df_cleaned[col].fillna(0.0)
-        
-        # Preenche outras colunas com None
-        df_cleaned = df_cleaned.where(pd.notnull(df_cleaned), None)
-        
-        # Converte tipos
-        for col in df_cleaned.columns:
-            if df_cleaned[col].dtype in ['int64', 'int32']:
-                df_cleaned[col] = df_cleaned[col].astype('Int64')
-            elif df_cleaned[col].dtype in ['float64', 'float32']:
-                df_cleaned[col] = df_cleaned[col].astype('float64')
-            elif df_cleaned[col].dtype == 'datetime64[ns]':
-                df_cleaned[col] = df_cleaned[col].dt.strftime('%Y-%m-%d')
-        
-        # Converte para dict - muito mais rápido que iterrows
-        result = df_cleaned.to_dict('records')
-        return result
+        return df_cleaned.to_dict('records')
     except Exception as e:
-        print(f"Erro na conversão otimizada, usando método fallback: {e}")
-        # Fallback para método antigo se houver erro (limitado)
+        print(f"Erro na conversão otimizada: {e}")
+        return _fallback_dataframe_to_json(df.head(MAX_ROWS_FOR_FALLBACK))
+
+
+def _normalize_dataframe_types(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza tipos de dados do DataFrame para serialização JSON."""
+    df_copy = df.copy()
+    
+    for col in df_copy.columns:
+        if df_copy[col].dtype in ['int64', 'int32']:
+            df_copy[col] = df_copy[col].astype('Int64')
+        elif df_copy[col].dtype in ['float64', 'float32']:
+            df_copy[col] = df_copy[col].astype('float64')
+    
+    return df_copy
+
+
+def _fill_numeric_nulls(df: pd.DataFrame) -> pd.DataFrame:
+    """Preenche valores nulos em colunas numéricas com 0."""
+    NUMERIC_KEYWORDS = ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL', 
+                        'INVESTIMENTO', 'CLIQUES', 'IMPRESSÕES']
+    
+    numeric_cols = [
+        col for col in df.columns 
+        if any(keyword in str(col).upper() for keyword in NUMERIC_KEYWORDS)
+    ]
+    
+    for col in numeric_cols:
+        if col in df.columns and df[col].dtype in ['int64', 'float64', 'Int64']:
+            df[col] = df[col].fillna(0.0)
+    
+    df = df.where(pd.notnull(df), None)
+    return df
+
+
+def _convert_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Converte colunas datetime para string."""
+    for col in df.columns:
+        if df[col].dtype == 'datetime64[ns]':
+            df[col] = df[col].dt.strftime('%Y-%m-%d')
+    return df
+
+
+def _fallback_dataframe_to_json(df: pd.DataFrame) -> list:
+    """Método fallback limitado para conversão (usado apenas em caso de erro)."""
+    NUMERIC_KEYWORDS = ['CPL', 'CPMQL', 'CPC', 'CPM', 'CTR', 'LEAD', 'MQL', 
+                        'INVESTIMENTO', 'CLIQUES', 'IMPRESSÕES']
+    
     cleaned_data = []
-    for _, row in df.head(500).iterrows():  # Limita a 500 no fallback
+    for _, row in df.iterrows():
         clean_row = {}
         for col, value in row.items():
             if pd.isna(value):
-                if any(keyword in col.upper() for keyword in numeric_keywords):
-                    clean_row[col] = 0.0
-                else:
-                    clean_row[col] = None
+                clean_row[col] = 0.0 if any(kw in col.upper() for kw in NUMERIC_KEYWORDS) else None
             elif isinstance(value, (int, float)):
                 clean_row[col] = float(value) if not pd.isna(value) else 0.0
             else:
@@ -694,7 +725,8 @@ def fill_empty_fields_with_zero(df):
                     # Converte toda a coluna para numérica e preenche NaN com 0
                     # Usa apply para converter item por item
                     try:
-                        df[col] = df[col].apply(lambda x: pd.to_numeric(x, errors='coerce') if pd.notna(x) else 0).fillna(0)
+                        # Clean Code: Operação vetorizada ao invés de apply com lambda
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
                     except:
                         # Se der erro, mantém como string e preenche com string vazia
                         df[col] = df[col].fillna('')
@@ -764,8 +796,10 @@ def process_mql_column_to_leads(df):
         print(f"Encontrada coluna MQL: {mql_col}")
         
         # Cria colunas temporárias de contagem
-        df['COUNT_LEAD'] = df[mql_col].apply(lambda x: 1 if str(x).upper().strip() == 'LEAD' else 0)
-        df['COUNT_MQL'] = df[mql_col].apply(lambda x: 1 if str(x).upper().strip() == 'MQL' else 0)
+        # Clean Code: Operações vetorizadas ao invés de apply com lambda
+        mql_upper = df[mql_col].fillna('').astype(str).str.upper().str.strip()
+        df['COUNT_LEAD'] = (mql_upper == 'LEAD').astype(int)
+        df['COUNT_MQL'] = (mql_upper == 'MQL').astype(int)
         
         print(f"Total de LEADS (contados): {df['COUNT_LEAD'].sum()}")
         print(f"Total de MQLs (contados): {df['COUNT_MQL'].sum()}")
@@ -1456,11 +1490,10 @@ def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, 
 
 def analyze_leads_dataframe(df):
     """Gera análises a partir de uma planilha de leads - OTIMIZADO"""
-    # Limita processamento se tiver muitos dados
-    max_rows = 50000  # Limite máximo de linhas para processar
-    if len(df) > max_rows:
-        print(f"Limitando processamento a {max_rows} linhas de {len(df)} total")
-        df = df.head(max_rows)
+    # Clean Code: Usa constante ao invés de magic number
+    if len(df) > MAX_ROWS_FOR_PROCESSING:
+        print(f"Limitando processamento a {MAX_ROWS_FOR_PROCESSING} linhas de {len(df)} total")
+        df = df.head(MAX_ROWS_FOR_PROCESSING)
     
     df = df.copy()
     df.columns = [str(col).strip() for col in df.columns]
@@ -1474,20 +1507,12 @@ def analyze_leads_dataframe(df):
     phone_col = detect_lead_phone_column(df)
     
     if source_col:
-        def _normalize_source(value):
-            if value is None or (isinstance(value, float) and pd.isna(value)):
-                return 'organico'
-            text = str(value).strip()
-            return text if text else 'organico'
-        # Otimização: usa operações vetorizadas ao invés de apply
-        df[source_col] = df[source_col].fillna('organico').astype(str).str.strip()
-        df[source_col] = df[source_col].replace({'': 'organico', 'nan': 'organico', 'None': 'organico', '<NA>': 'organico', 'None': 'organico'})
-        df[source_col] = df[source_col].fillna('organico')
+        df[source_col] = _normalize_source_column(df[source_col])
 
     if date_col:
         df['_lead_date_dt'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
         if 'Data_Lead' not in df.columns:
-            df['Data_Lead'] = df[date_col].apply(parse_brazilian_date)
+            df['Data_Lead'] = _parse_dates_vectorized(df[date_col])
     else:
         df['_lead_date_dt'] = pd.NaT
     
@@ -1666,44 +1691,30 @@ def analyze_leads_dataframe(df):
         'owner': owner_distribution
     }
 
-    # Conciliação SULTS - HABILITADA automaticamente
-    # Limita a conciliação para não impactar muito a performance
+    # Conciliação SULTS - DESABILITADA por padrão para melhor performance
+    # Pode ser habilitada depois via endpoint separado se necessário
     sults_crosscheck = {
         'available': False,
-        'message': 'Conciliação com SULTS em andamento...'
+        'message': 'Conciliação com SULTS desabilitada para melhor performance. Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
     }
     
-    # Processa conciliação automaticamente se SULTS estiver disponível
-    # Limita a 5000 leads para manter performance aceitável
-    if SULTS_AVAILABLE and len(df) <= 5000:
-        try:
-            print(f"[SULTS] Iniciando conciliação automática para {len(df)} leads...")
-            sults_crosscheck = crosscheck_leads_with_sults(
-                df,
-                name_col=name_col,
-                status_col=status_col,
-                email_col=email_col,
-                phone_col=phone_col
-            )
-            print(f"[SULTS] Conciliação concluída: {sults_crosscheck.get('summary', {}).get('matched', 0)} leads encontrados")
-        except Exception as e:
-            print(f"[SULTS] Erro na conciliação automática (não bloqueante): {e}")
-            import traceback
-            traceback.print_exc()
-            sults_crosscheck = {
-                'available': False,
-                'message': f'Conciliação com SULTS não disponível: {str(e)[:100]}'
-            }
-    elif SULTS_AVAILABLE and len(df) > 5000:
-        sults_crosscheck = {
-            'available': False,
-            'message': f'Conciliação automática desabilitada para {len(df)} leads (limite: 5000). Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
-        }
-    elif not SULTS_AVAILABLE:
-        sults_crosscheck = {
-            'available': False,
-            'message': 'Integração SULTS não disponível. Verifique a configuração da API.'
-        }
+    # Opcional: processa conciliação apenas se tiver poucos leads E se solicitado explicitamente
+    # Comentado para melhor performance - descomente se necessário
+    # if len(df) < 500 and request.args.get('sults_sync') == 'true':
+    #     try:
+    #         sults_crosscheck = crosscheck_leads_with_sults(
+    #             df,
+    #             name_col=name_col,
+    #             status_col=status_col,
+    #             email_col=email_col,
+    #             phone_col=phone_col
+    #         )
+    #     except Exception as e:
+    #         print(f"Erro na conciliação SULTS (não bloqueante): {e}")
+    #         sults_crosscheck = {
+    #             'available': False,
+    #             'message': 'Conciliação com SULTS não disponível no momento.'
+    #         }
     if sults_crosscheck.get('available'):
         summary = sults_crosscheck.get('summary', {})
         status_counts = summary.get('status_counts', {})
@@ -1854,7 +1865,7 @@ def upload_file():
         
         # Processa datas
         if date_col:
-            df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+            df['Data_Processada'] = _parse_dates_vectorized(df[date_col])
         
         # Otimização: processa apenas colunas necessárias
         numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -2148,7 +2159,7 @@ def auto_upload():
             
             # Processa datas
             if date_col:
-                df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+                df['Data_Processada'] = _parse_dates_vectorized(df[date_col])
             
             # Preenche campos em branco com 0 APÓS detectar as colunas
             df = fill_empty_fields_with_zero(df)
@@ -2455,7 +2466,7 @@ def google_ads_upload():
             # Detecta coluna de data
             date_col = detect_date_column(df)
             if date_col:
-                df['Data_Processada'] = df[date_col].apply(parse_brazilian_date)
+                df['Data_Processada'] = _parse_dates_vectorized(df[date_col])
                 print(f"Coluna de data detectada: {date_col}")
             
             # Preenche coluna Term vazia com 'organico'
