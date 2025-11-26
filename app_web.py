@@ -377,8 +377,29 @@ def load_leads_dataframe_from_bytes(file_bytes, filename='planilha.xlsx', priori
         }
 
 def load_drive_credentials():
-    """Carrega credenciais do Google Drive"""
+    """Carrega credenciais do Google Drive - suporta arquivo ou variável de ambiente"""
     try:
+        # Método 1: Tentar carregar de variável de ambiente (para Vercel/cloud)
+        credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+        if credentials_json:
+            try:
+                # Parse do JSON da variável de ambiente
+                import json as json_lib
+                credentials_info = json_lib.loads(credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_info,
+                    scopes=[
+                        'https://www.googleapis.com/auth/drive.readonly',
+                        'https://www.googleapis.com/auth/spreadsheets.readonly'
+                    ]
+                )
+                print("Credenciais carregadas de variável de ambiente GOOGLE_CREDENTIALS_JSON")
+                return credentials
+            except Exception as env_error:
+                print(f"Erro ao carregar credenciais da variável de ambiente: {env_error}")
+                # Continua para tentar método 2
+        
+        # Método 2: Tentar carregar de arquivo (para desenvolvimento local)
         credentials_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
         # Se não estiver definido, tentar caminho relativo
@@ -386,21 +407,28 @@ def load_drive_credentials():
             credentials_file = 'sixth-now-475017-k8-785034518ab7.json'
         
         # Verifica se o arquivo existe
-        if not os.path.exists(credentials_file):
+        if os.path.exists(credentials_file):
+            credentials = service_account.Credentials.from_service_account_file(
+                credentials_file,
+                scopes=[
+                    'https://www.googleapis.com/auth/drive.readonly',
+                    'https://www.googleapis.com/auth/spreadsheets.readonly'
+                ]
+            )
+            print(f"Credenciais carregadas de arquivo: {credentials_file}")
+            return credentials
+        else:
             print(f"Arquivo de credenciais não encontrado: {credentials_file}")
             print(f"Diretório atual: {os.getcwd()}")
-            print(f"Conteúdo do diretório: {os.listdir('.')}")
+            # Não lista diretório no Vercel para evitar erro
+            if os.path.exists('.'):
+                try:
+                    files = [f for f in os.listdir('.') if f.endswith('.json')]
+                    print(f"Arquivos JSON encontrados: {files}")
+                except:
+                    pass
             return None
-        
-        credentials = service_account.Credentials.from_service_account_file(
-            credentials_file,
-            scopes=[
-                'https://www.googleapis.com/auth/drive.readonly',
-                'https://www.googleapis.com/auth/spreadsheets.readonly'
-            ]
-        )
-        print(f"Credenciais carregadas de: {credentials_file}")
-        return credentials
+            
     except Exception as e:
         print(f"Erro ao carregar credenciais: {e}")
         import traceback

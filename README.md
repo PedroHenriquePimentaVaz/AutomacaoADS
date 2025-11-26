@@ -52,8 +52,22 @@ SULTS_API_TOKEN=O2JlaG9uZXN0YnJhc2lsOzE3NTQ0MDAwMTgwOTM=
 
 ### Credenciais do Google Drive
 
+#### Para Desenvolvimento Local:
 1. Coloque o arquivo `sixth-now-475017-k8-785034518ab7.json` na raiz do projeto
 2. Certifique-se de que o service account tem acesso aos arquivos no Google Drive
+
+#### Para Deploy no Vercel (ou outros serviços cloud):
+1. Abra o arquivo JSON de credenciais (`sixth-now-475017-k8-785034518ab7.json`)
+2. Copie todo o conteúdo do JSON (como uma string)
+3. No painel do Vercel, vá em **Settings** → **Environment Variables**
+4. Adicione uma nova variável:
+   - **Nome**: `GOOGLE_CREDENTIALS_JSON`
+   - **Valor**: Cole todo o conteúdo do JSON (como uma string única)
+5. Certifique-se de que o service account tem acesso aos arquivos no Google Drive
+
+**Nota**: O código agora suporta ambos os métodos automaticamente:
+- Se `GOOGLE_CREDENTIALS_JSON` estiver definido, usa a variável de ambiente
+- Caso contrário, tenta carregar do arquivo local
 
 ## 📊 Funcionalidades
 
