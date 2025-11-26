@@ -1674,8 +1674,8 @@ def analyze_leads_dataframe(df):
     }
     
     # Processa conciliação automaticamente se SULTS estiver disponível
-    # Limita a 2000 leads para manter performance aceitável
-    if SULTS_AVAILABLE and len(df) <= 2000:
+    # Limita a 5000 leads para manter performance aceitável
+    if SULTS_AVAILABLE and len(df) <= 5000:
         try:
             print(f"[SULTS] Iniciando conciliação automática para {len(df)} leads...")
             sults_crosscheck = crosscheck_leads_with_sults(
@@ -1694,10 +1694,10 @@ def analyze_leads_dataframe(df):
                 'available': False,
                 'message': f'Conciliação com SULTS não disponível: {str(e)[:100]}'
             }
-    elif SULTS_AVAILABLE and len(df) > 2000:
+    elif SULTS_AVAILABLE and len(df) > 5000:
         sults_crosscheck = {
             'available': False,
-            'message': f'Conciliação automática desabilitada para {len(df)} leads (limite: 2000). Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
+            'message': f'Conciliação automática desabilitada para {len(df)} leads (limite: 5000). Use o botão "Carregar Dados SULTS" para conciliar manualmente.'
         }
     elif not SULTS_AVAILABLE:
         sults_crosscheck = {
