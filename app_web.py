@@ -1652,8 +1652,8 @@ def analyze_leads_dataframe(df):
     
     mql_to_lead_rate = round((tag_mqls / total_leads) * 100, 2) if total_leads > 0 else 0.0
     
-    kpis = {
-        'total_leads': total_leads,
+    # Atualiza kpis com valores calculados (já inicializado anteriormente)
+    kpis.update({
         'leads_last_30_days': leads_last_30_days,
         'leads_without_date': leads_without_date,
         'unique_statuses': unique_statuses,
