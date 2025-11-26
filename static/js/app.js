@@ -54,8 +54,6 @@ function formatNumber(value) {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
-    // Garante que autoLeadsUploadBtn está definido
-    autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
     if (!autoLeadsUploadBtn) {
         const buttonsContainer = document.querySelector('.auto-upload-buttons');
         if (buttonsContainer) {
@@ -2064,14 +2062,14 @@ function renderTemporalCharts() {
 
 function renderFinancialCharts() {
     if (!filteredData) return;
-    
+        
     const kpis = filteredData.kpis || {};
     
-    if (kpis.total_leads && kpis.total_mqls) {
-        conversionChart.data.datasets[0].data = [kpis.total_leads, kpis.total_mqls];
-        conversionChart.update();
-    }
-    
+        if (kpis.total_leads && kpis.total_mqls) {
+            conversionChart.data.datasets[0].data = [kpis.total_leads, kpis.total_mqls];
+            conversionChart.update();
+        }
+        
     const avgCPLValue = (kpis.total_leads && kpis.investimento_total)
         ? kpis.investimento_total / kpis.total_leads
         : 0;
@@ -2082,11 +2080,11 @@ function renderFinancialCharts() {
         : 0;
     document.getElementById('avgCPMQL').textContent = formatCurrency(avgCPMQLValue);
     
-    if (kpis.custo_por_mql && kpis.custo_por_mql > 0) {
+        if (kpis.custo_por_mql && kpis.custo_por_mql > 0) {
         document.getElementById('custoPorMQL').textContent = formatCurrency(kpis.custo_por_mql);
-    } else {
-        document.getElementById('custoPorMQL').textContent = 'N/A';
-    }
+        } else {
+            document.getElementById('custoPorMQL').textContent = 'N/A';
+        }
     
     const funnelsAnalysis = filteredData.funnels_analysis || null;
     const funnelTotals = funnelsAnalysis?.totals || {};
@@ -2121,8 +2119,8 @@ function renderCostsChart() {
     let records = analysis.records.filter(record => !record.is_total);
     if (!records.length) {
         records = analysis.records;
-    }
-    
+        }
+        
     const labels = records.map(record => record.name);
     const values = records.map(record => record.investimento || 0);
     
@@ -2132,7 +2130,7 @@ function renderCostsChart() {
     costsChart.data.datasets[0].borderColor = '#edb125';
     costsChart.data.datasets[0].label = 'Investimento';
     costsChart.update();
-}
+        }
 
 function renderFunnelsTable() {
     const tableBody = document.getElementById('funnelsTableBody');
@@ -2144,7 +2142,7 @@ function renderFunnelsTable() {
     if (!analysis || !analysis.records || !analysis.records.length) {
         tableBody.innerHTML = '<tr><td class="empty-cell" colspan="6">Nenhum dado de funil disponível.</td></tr>';
         return;
-    }
+        }
     
     analysis.records.forEach(record => {
         const row = document.createElement('tr');
@@ -2942,11 +2940,6 @@ function initializeAutoUpload() {
     const autoUploadBtn = document.getElementById('autoUploadBtn');
     const googleAdsUploadBtn = document.getElementById('googleAdsUploadBtn');
     
-    // Garante que autoLeadsUploadBtn está definido
-    if (!autoLeadsUploadBtn) {
-        autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
-    }
-    
     if (autoUploadBtn) {
         autoUploadBtn.addEventListener('click', handleAutoUpload);
     }
@@ -2957,8 +2950,6 @@ function initializeAutoUpload() {
     
     if (autoLeadsUploadBtn) {
         autoLeadsUploadBtn.addEventListener('click', handleLeadsAutoUpload);
-    } else {
-        console.error('Botão autoLeadsUploadBtn não encontrado!');
     }
 }
 
@@ -3259,19 +3250,10 @@ async function handleGoogleAdsUpload() {
 }
 
 async function handleLeadsAutoUpload() {
-    if (!autoLeadsUploadBtn) {
-        autoLeadsUploadBtn = document.getElementById('autoLeadsUploadBtn');
-        if (!autoLeadsUploadBtn) {
-            console.error('Botão autoLeadsUploadBtn não encontrado!');
-            showNotification('Erro: botão não encontrado', 'error');
-            return;
-        }
-    }
-    
+    if (!autoLeadsUploadBtn) return;
     const originalText = autoLeadsUploadBtn.innerHTML;
     
     try {
-        showLoading();
         autoLeadsUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
         autoLeadsUploadBtn.disabled = true;
         
@@ -3283,7 +3265,8 @@ async function handleLeadsAutoUpload() {
         });
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
         const result = await response.json();
@@ -3297,18 +3280,14 @@ async function handleLeadsAutoUpload() {
         } else {
             const errorMsg = result.error || 'Erro ao carregar leads automaticamente';
             console.error('Erro na resposta:', errorMsg);
-            showUpload();
             showNotification(errorMsg, 'error');
         }
     } catch (error) {
         console.error('Erro no auto upload de leads:', error);
-        showUpload();
-        showNotification(`Erro de conexão: ${error.message}`, 'error');
+        showNotification(`Erro ao carregar leads: ${error.message}`, 'error');
     } finally {
-        if (autoLeadsUploadBtn) {
-            autoLeadsUploadBtn.innerHTML = originalText;
-            autoLeadsUploadBtn.disabled = false;
-        }
+        autoLeadsUploadBtn.innerHTML = originalText;
+        autoLeadsUploadBtn.disabled = false;
     }
 }
 
