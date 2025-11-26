@@ -508,7 +508,7 @@ def download_file_from_drive(file_id, credentials):
         traceback.print_exc()
         return None, None
 
-def clean_dataframe_for_json(df: pd.DataFrame, max_rows: int = MAX_ROWS_FOR_JSON) -> list:
+def clean_dataframe_for_json(df: pd.DataFrame, max_rows: int = 2000) -> list:
     """
     Converte DataFrame para formato JSON otimizado.
     
@@ -593,6 +593,31 @@ def _fallback_dataframe_to_json(df: pd.DataFrame) -> list:
                 clean_row[col] = str(value)
         cleaned_data.append(clean_row)
     return cleaned_data
+
+
+def _normalize_source_column(series: pd.Series) -> pd.Series:
+    """
+    Normaliza coluna de origem usando operações vetorizadas.
+    
+    Clean Code: Função pequena com responsabilidade única.
+    Performance: Operações vetorizadas ao invés de apply().
+    """
+    DEFAULT_SOURCE = 'organico'
+    INVALID_VALUES = {'', 'nan', 'None', '<NA>'}
+    
+    normalized = series.fillna(DEFAULT_SOURCE).astype(str).str.strip()
+    normalized = normalized.replace(INVALID_VALUES, DEFAULT_SOURCE)
+    return normalized.fillna(DEFAULT_SOURCE)
+
+
+def _parse_dates_vectorized(series: pd.Series) -> pd.Series:
+    """
+    Converte datas brasileiras usando operações vetorizadas.
+    
+    Clean Code: Função focada em uma única responsabilidade.
+    Performance: Evita apply() usando pd.to_datetime vetorizado.
+    """
+    return pd.to_datetime(series, dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
 
 def analyze_google_ads_funnels(df):
     """Gera métricas financeiras da aba Controle Google ADS 2."""
