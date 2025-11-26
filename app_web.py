@@ -28,10 +28,14 @@ app.jinja_env.cache = {}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
+# Clean Code: Constantes com nomes descritivos
 # Cache simples em memória
 _DATA_CACHE = {}
-_CACHE_TTL = 300  # 5 minutos
-_CACHE_MAX_SIZE = 10  # Máximo de 10 entradas no cache
+CACHE_TTL_SECONDS = 300  # 5 minutos
+CACHE_MAX_ENTRIES = 10  # Máximo de 10 entradas no cache
+MAX_ROWS_FOR_PROCESSING = 50000
+MAX_ROWS_FOR_JSON = 2000
+MAX_ROWS_FOR_FALLBACK = 500
 
 def _get_cache_key(data):
     """Gera chave de cache baseada nos dados"""
