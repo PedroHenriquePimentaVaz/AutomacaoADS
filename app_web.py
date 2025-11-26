@@ -3877,6 +3877,17 @@ def get_performance_optimization():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.errorhandler(500)
+def internal_error(error):
+    import traceback
+    error_msg = f"Erro interno: {str(error)}\n{traceback.format_exc()}"
+    print(error_msg)
+    return jsonify({'error': 'Erro interno do servidor', 'details': str(error)}), 500
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Rota não encontrada'}), 404
+
 if __name__ == '__main__':
     print(f"Templates path: {app.template_folder}")
     app.run(debug=True, host='0.0.0.0', port=5000)
