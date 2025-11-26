@@ -1523,8 +1523,9 @@ def analyze_leads_dataframe(df):
             ]
             
             # Comparação temporal: mês atual vs mês anterior
-            current_month = datetime.now().to_period('M')
-            previous_month = (current_month - 1)
+            from pandas import Period
+            current_month = Period(datetime.now(), freq='M')
+            previous_month = current_month - 1
             
             current_month_leads = monthly_counts.get(current_month, 0)
             previous_month_leads = monthly_counts.get(previous_month, 0)
@@ -1801,7 +1802,13 @@ def debug_credentials():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        import traceback
+        error_msg = f"Erro ao renderizar template: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return f"<h1>Erro</h1><pre>{error_msg}</pre>", 500
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -2491,8 +2498,9 @@ def google_ads_upload():
                         summary_df['Period'] = summary_df['Data'].dt.to_period('M')
                         monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
                         
-                        current_month = datetime.now().to_period('M')
-                        previous_month = (current_month - 1)
+                        from pandas import Period
+                        current_month = Period(datetime.now(), freq='M')
+                        previous_month = current_month - 1
                         
                         current_month_count = int(monthly_counts.get(current_month, 0))
                         previous_month_count = int(monthly_counts.get(previous_month, 0))
