@@ -3411,7 +3411,8 @@ function renderTemporalComparison(data) {
     const container = document.getElementById('temporalComparisonContent');
     if (!container || !data) return;
     
-    const comparison = data.temporal_comparison || {};
+    // Aceita tanto objeto completo quanto apenas temporal_comparison
+    const comparison = data.temporal_comparison || (data.kpis && data.kpis.temporal_comparison) || {};
     if (!comparison.current_month) {
         container.innerHTML = '<p>Dados de comparação temporal não disponíveis.</p>';
         return;
