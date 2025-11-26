@@ -37,24 +37,52 @@
     --border-medium: #cbd5e1;
     --border-dark: #94a3b8;
     
-    /* Enhanced Shadows */
+    /* Enhanced Shadows - UX Principle: Depth & Hierarchy */
     --shadow-sm: 0 1px 2px 0 rgba(0, 28, 84, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 28, 84, 0.1), 0 2px 4px -1px rgba(0, 28, 84, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 28, 84, 0.1), 0 4px 6px -2px rgba(0, 28, 84, 0.05);
     --shadow-xl: 0 20px 25px -5px rgba(0, 28, 84, 0.1), 0 10px 10px -5px rgba(0, 28, 84, 0.04);
     --shadow-2xl: 0 25px 50px -12px rgba(0, 28, 84, 0.25);
     
-    /* Border Radius */
+    /* Border Radius - UX Principle: Consistency */
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 16px;
     --radius-xl: 24px;
     --radius-2xl: 32px;
     
-    /* Transitions */
+    /* Transitions - UX Principle: Feedback */
     --transition-fast: 150ms ease;
     --transition-base: 250ms ease;
     --transition-slow: 350ms ease;
+    
+    /* Spacing System - UX Principle: Visual Rhythm */
+    --spacing-xs: 0.25rem;   /* 4px */
+    --spacing-sm: 0.5rem;    /* 8px */
+    --spacing-md: 1rem;      /* 16px */
+    --spacing-lg: 1.5rem;    /* 24px */
+    --spacing-xl: 2rem;      /* 32px */
+    --spacing-2xl: 3rem;     /* 48px */
+    --spacing-3xl: 4rem;     /* 64px */
+    
+    /* Typography Scale - UX Principle: Hierarchy */
+    --font-size-xs: 0.75rem;    /* 12px */
+    --font-size-sm: 0.875rem;   /* 14px */
+    --font-size-base: 1rem;     /* 16px */
+    --font-size-lg: 1.125rem;   /* 18px */
+    --font-size-xl: 1.25rem;   /* 20px */
+    --font-size-2xl: 1.5rem;   /* 24px */
+    --font-size-3xl: 1.875rem; /* 30px */
+    --font-size-4xl: 2.25rem;  /* 36px */
+    
+    /* Line Heights - UX Principle: Readability */
+    --line-height-tight: 1.25;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.75;
+    
+    /* Focus States - UX Principle: Accessibility */
+    --focus-ring: 0 0 0 3px rgba(35, 116, 185, 0.3);
+    --focus-ring-offset: 2px;
 }
 
 body {
@@ -64,10 +92,18 @@ body {
     background-size: 200% 200%;
     animation: gradientShift 15s ease infinite;
     color: var(--text-primary);
-    line-height: 1.6;
+    line-height: var(--line-height-normal);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
+    font-size: var(--font-size-base);
+}
+
+/* UX Principle: Focus States for Accessibility */
+*:focus-visible {
+    outline: 2px solid var(--bh-blue);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: var(--radius-sm);
 }
 
 @keyframes gradientShift {
@@ -76,9 +112,17 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 0 1rem;
+    padding: 0 var(--spacing-lg);
+    width: 100%;
+}
+
+/* UX Principle: Responsive Container */
+@media (min-width: 1536px) {
+    .container {
+        max-width: 1600px;
+    }
 }
 
 /* Header */
@@ -139,19 +183,35 @@ body {
 }
 
 /* Buttons */
+/* UX Principle: Button Design - Clear Affordances & Feedback */
 .btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-xl);
     border: none;
     border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: 600;
     text-decoration: none;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
     font-family: inherit;
+    position: relative;
+    overflow: hidden;
+    min-height: 44px; /* UX Principle: Touch Target Size */
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.btn:active {
+    transform: scale(0.98);
 }
 
 .btn-primary {
@@ -202,10 +262,17 @@ body {
     font-size: 0.75rem;
 }
 
-/* Main Content */
+/* Main Content - UX Principle: Visual Breathing Space */
 .main {
-    padding: 2rem 0;
+    padding: var(--spacing-2xl) 0;
     min-height: calc(100vh - 80px);
+}
+
+/* UX Principle: Content Hierarchy */
+.main > .container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2xl);
 }
 
 /* Upload Section */
@@ -235,16 +302,32 @@ body {
 .upload-card-simplified {
     background: white;
     border-radius: var(--radius-2xl);
-    padding: 3.5rem 3rem;
+    padding: var(--spacing-3xl) var(--spacing-2xl);
     text-align: center;
     box-shadow: var(--shadow-xl);
     border: 1px solid var(--border-light);
-    max-width: 700px;
+    max-width: 800px;
     width: 100%;
     transition: all var(--transition-base);
     position: relative;
     overflow: hidden;
     animation: fadeInUp 0.6s ease-out;
+    margin: 0 auto;
+}
+
+/* UX Principle: Visual Hierarchy - Clear Primary Action */
+.upload-card-simplified h2 {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin-bottom: var(--spacing-md);
+    line-height: var(--line-height-tight);
+}
+
+.upload-card-simplified > p {
+    font-size: var(--font-size-lg);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-2xl);
+    line-height: var(--line-height-relaxed);
 }
 
 @keyframes fadeInUp {
@@ -381,9 +464,29 @@ body {
 .auto-upload-buttons {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
+    gap: var(--spacing-lg);
     justify-content: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--spacing-xl);
+}
+
+/* UX Principle: Button Hierarchy - Primary vs Secondary */
+.auto-upload-buttons .btn-secondary {
+    background: white;
+    color: var(--text-primary);
+    border: 2px solid var(--border-medium);
+    font-weight: 500;
+}
+
+.auto-upload-buttons .btn-secondary:hover {
+    background: var(--accent-bg);
+    border-color: var(--bh-primary);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.auto-upload-buttons .btn-primary {
+    grid-column: 1 / -1;
+    justify-self: stretch;
 }
 
 .auto-upload-buttons .btn {
@@ -560,14 +663,58 @@ body {
 }
 
 /* Filters Card */
+/* UX Principle: Filter Design - Clear Affordances */
 .filters-card {
     background: white;
     border-radius: var(--radius-xl);
-    padding: 2rem;
+    padding: var(--spacing-xl);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-light);
-    margin-bottom: 2rem;
+    margin-bottom: var(--spacing-2xl);
     transition: all var(--transition-base);
+}
+
+.filters-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.filter-group label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.filter-select {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 2px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    font-family: inherit;
+    background: white;
+    color: var(--text-primary);
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.filter-select:hover {
+    border-color: var(--bh-primary);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--bh-blue);
+    box-shadow: var(--focus-ring);
 }
 
 .filters-card:hover {
@@ -723,12 +870,30 @@ body {
     transform: scaleX(1);
 }
 
+/* UX Principle: Section Headers - Clear Content Organization */
 .section-header {
     text-align: center;
-    margin-bottom: 2.5rem;
-    padding-bottom: 1.25rem;
+    margin-bottom: var(--spacing-2xl);
+    padding-bottom: var(--spacing-lg);
     border-bottom: 2px solid var(--border-light);
     position: relative;
+}
+
+.section-header h2 {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    margin: 0;
+    line-height: var(--line-height-tight);
+}
+
+.section-header h2 i {
+    font-size: var(--font-size-xl);
+    color: var(--bh-primary);
 }
 
 .section-header::after {
@@ -1197,22 +1362,73 @@ body {
 }
 
 /* KPIs Grid */
+/* UX Principle: Visual Hierarchy - KPI Grid */
 .kpis-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-2xl);
 }
 
+/* UX Principle: Card Design - Clear Information Architecture */
 .kpi-card {
     background: white;
     border-radius: var(--radius-xl);
-    padding: 1.75rem;
+    padding: var(--spacing-xl);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-light);
     transition: all var(--transition-base);
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* UX Principle: Information Hierarchy in Cards */
+.kpi-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.kpi-card-title {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.kpi-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xl);
+    opacity: 0.8;
+}
+
+.kpi-card-value {
+    font-size: var(--font-size-4xl);
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: var(--line-height-tight);
+    margin: var(--spacing-sm) 0;
+}
+
+.kpi-card-change {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-top: auto;
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-light);
 }
 
 .kpi-card::before {
@@ -1291,15 +1507,44 @@ body {
     margin-bottom: 2rem;
 }
 
+/* UX Principle: Chart Cards - Data Visualization Best Practices */
 .chart-card {
     background: white;
     border-radius: var(--radius-xl);
-    padding: 2rem;
+    padding: var(--spacing-xl);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-light);
     transition: all var(--transition-base);
     position: relative;
     overflow: hidden;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 2px solid var(--border-light);
+}
+
+.chart-card-header h3 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.chart-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    position: relative;
 }
 
 .chart-card::before {
