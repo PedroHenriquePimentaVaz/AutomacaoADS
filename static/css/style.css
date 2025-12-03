@@ -1796,8 +1796,18 @@ body {
     font-weight: 500;
 }
 
-.data-table tbody tr:hover {
+.data-table tbody tr {
+    transition: all var(--transition-fast);
+}
+
+.data-table tbody tr:nth-child(even) {
     background: var(--accent-bg);
+}
+
+.data-table tbody tr:hover {
+    background: var(--border-light);
+    transform: scale(1.01);
+    box-shadow: 0 2px 8px rgba(0, 28, 84, 0.1);
 }
 
 .data-table tbody tr:last-child td {

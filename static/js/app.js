@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    initializeTheme();
     initializeCharts();
     initializeFilters();
     initializeAutoUpload();
@@ -73,15 +74,137 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeLeadControls();
     initializeSultsFilters();
     initializeSultsData();
+    initializeTooltips();
+    initializeMicroInteractions();
+    
+    // Garantir que o botão SULTS está funcionando (retry adicional)
+    setTimeout(() => {
+        const sultsBtn = document.getElementById('sultsDataBtn');
+        if (sultsBtn && !sultsBtn.hasAttribute('data-initialized')) {
+            sultsBtn.addEventListener('click', handleSultsDataLoad);
+            sultsBtn.setAttribute('data-initialized', 'true');
+            console.log('Botão SULTS inicializado (retry final)');
+        }
+    }, 1000);
 });
 
-function showLoading() {
-    uploadSection.style.display = 'none';
-    dashboardSection.style.display = 'none';
-    if (leadsDashboardSection) {
-        leadsDashboardSection.style.display = 'none';
+// Melhoria Visual: Dark Mode
+function initializeTheme() {
+    const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const themeText = document.getElementById('themeText');
+    const html = document.documentElement;
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    html.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme, themeIcon, themeText);
+    
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme, themeIcon, themeText);
+        });
     }
-    loadingSection.style.display = 'block';
+}
+
+function updateThemeIcon(theme, icon, text) {
+    if (!icon || !text) return;
+    if (theme === 'dark') {
+        icon.className = 'fas fa-sun';
+        text.textContent = 'Claro';
+    } else {
+        icon.className = 'fas fa-moon';
+        text.textContent = 'Escuro';
+    }
+}
+
+// Melhoria Visual: Tooltips
+function initializeTooltips() {
+    document.querySelectorAll('[data-tooltip]').forEach(element => {
+        element.classList.add('tooltip');
+    });
+}
+
+// Melhoria Visual: Micro-interações
+function initializeMicroInteractions() {
+    // Add ripple effect to buttons
+    document.querySelectorAll('.btn').forEach(btn => {
+        btn.classList.add('ripple');
+    });
+    
+    // Add hover lift to cards
+    document.querySelectorAll('.card, .kpi-card, .chart-card').forEach(card => {
+        card.classList.add('hover-lift');
+    });
+}
+
+// Melhoria Visual: Loading States Contextuais
+function showLoading(message = 'Processando dados...', submessage = 'Analisando sua planilha e gerando insights') {
+    const uploadSection = document.getElementById('uploadSection');
+    const dashboardSection = document.getElementById('dashboardSection');
+    const leadsDashboardSection = document.getElementById('leadsDashboardSection');
+    const loadingSection = document.getElementById('loadingSection');
+    
+    if (uploadSection) uploadSection.style.display = 'none';
+    if (dashboardSection) dashboardSection.style.display = 'none';
+    if (leadsDashboardSection) leadsDashboardSection.style.display = 'none';
+    if (loadingSection) loadingSection.style.display = 'block';
+    
+    // Update loading message
+    if (loadingSection) {
+        const loadingCard = loadingSection.querySelector('.loading-card');
+        if (loadingCard) {
+            const h3 = loadingCard.querySelector('h3');
+            const p = loadingCard.querySelector('p');
+            if (h3) h3.textContent = message;
+            if (p) p.textContent = submessage;
+        }
+    }
+}
+
+// Melhoria Visual: Skeleton Loaders
+function showSkeletonLoaders(container, count = 4) {
+    if (!container) return;
+    
+    // Limpa o container
+    container.innerHTML = '';
+    
+    // Cria skeleton loaders
+    for (let i = 0; i < count; i++) {
+        const skeletonCard = document.createElement('div');
+        skeletonCard.className = 'kpi-card skeleton skeleton-kpi';
+        skeletonCard.innerHTML = `
+            <div class="skeleton-line" style="width: 60%; height: 1rem; margin-bottom: 1rem;"></div>
+            <div class="skeleton-line" style="width: 40%; height: 2rem; margin-bottom: 0.5rem;"></div>
+            <div class="skeleton-line" style="width: 80%; height: 0.75rem;"></div>
+        `;
+        container.appendChild(skeletonCard);
+    }
+}
+
+// Melhoria Visual: Empty State
+function showEmptyState(container, options = {}) {
+    if (!container) return;
+    
+    const {
+        icon = 'fa-inbox',
+        title = 'Nenhum dado encontrado',
+        message = 'Não há dados disponíveis para exibir no momento.'
+    } = options;
+    
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas ${icon}"></i>
+            </div>
+            <h3 class="empty-state-title">${title}</h3>
+            <p class="empty-state-message">${message}</p>
+        </div>
+    `;
 }
 
 function showUpload() {
@@ -92,6 +215,12 @@ function showUpload() {
     }
     loadingSection.style.display = 'none';
     
+    // Melhoria Visual: Esconde breadcrumbs na tela inicial
+    const breadcrumbs = document.getElementById('breadcrumbs');
+    if (breadcrumbs) {
+        breadcrumbs.style.display = 'none';
+    }
+    
     // Hide back button when on upload screen
     const backBtn = document.getElementById('backToStartBtn');
     if (backBtn) {
@@ -99,7 +228,7 @@ function showUpload() {
     }
 }
 
-function showDashboard() {
+function showDashboard(skipCharts = false) {
     uploadSection.style.display = 'none';
     loadingSection.style.display = 'none';
     dashboardSection.style.display = 'block';
@@ -109,12 +238,32 @@ function showDashboard() {
     
     filteredData = currentData; // Initialize filtered data
     populateFilters();
-    renderKPIs();
-    renderCharts();
+    
+    // Melhoria Visual: Skeleton loaders enquanto carrega
+    showSkeletonLoaders(kpisGrid, 4);
+    
+    // Renderiza KPIs com animação
+    setTimeout(() => {
+        renderKPIs();
+        // Melhoria Visual: Animações de entrada escalonadas
+        kpisGrid.classList.add('stagger-children');
+    }, 100);
+    
+    // Performance: Não renderiza gráficos para Meta Ads (não acrescentam muito)
+    if (!skipCharts) {
+        renderCharts();
+    } else {
+        // Esconde seções de gráficos quando vier do Meta Ads
+        const chartsSections = document.querySelectorAll('.charts-section');
+        chartsSections.forEach(section => {
+            section.style.display = 'none';
+        });
+    }
+    
     renderTable();
     
-    // Add fade-in animation
-    dashboardSection.classList.add('fade-in');
+    // Melhoria Visual: Animações de entrada
+    dashboardSection.classList.add('fade-in', 'slide-in-up');
     
     // Show back button when viewing dashboard
     const backBtn = document.getElementById('backToStartBtn');
@@ -302,6 +451,28 @@ function renderKPIs() {
         );
         kpisGrid.appendChild(tagMQLsCard);
     }
+}
+
+// Melhoria Visual: Badges e Status Indicators
+function createBadge(text, type = 'info', icon = null) {
+    const badge = document.createElement('span');
+    badge.className = `badge badge-${type}`;
+    if (icon) {
+        badge.innerHTML = `<i class="fas fa-${icon}"></i> ${text}`;
+    } else {
+        badge.textContent = text;
+    }
+    return badge;
+}
+
+function createStatusIndicator(text, status = 'info') {
+    const indicator = document.createElement('span');
+    indicator.className = 'status-indicator';
+    indicator.innerHTML = `
+        <span class="status-dot ${status}"></span>
+        <span>${text}</span>
+    `;
+    return indicator;
 }
 
 function createKPICard(title, value, icon, color) {
@@ -496,7 +667,12 @@ function renderLeadCharts() {
                 ownerCardsContainer.appendChild(card);
             });
         } else {
-            ownerCardsContainer.innerHTML = '<div class="no-data">Nenhum dado disponível</div>';
+            // Melhoria Visual: Empty state melhorado
+            showEmptyState(ownerCardsContainer, {
+                icon: 'fa-users',
+                title: 'Nenhum responsável encontrado',
+                message: 'Não há dados de responsáveis disponíveis para exibir.'
+            });
         }
     }
 }
@@ -521,7 +697,18 @@ function renderSultsValidation() {
     
     if (!validation.available) {
         summaryEl.innerHTML = `<p>${validation.message || 'Conciliação indisponível.'}</p>`;
-        tableBody.innerHTML = `<tr><td class="empty-cell" colspan="6">${validation.message || 'Conciliação indisponível.'}</td></tr>`;
+        // Melhoria Visual: Empty state melhorado
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+            <td colspan="6" class="empty-cell">
+                <div class="empty-state" style="padding: 1.5rem;">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <h3 class="empty-state-title">${validation.message || 'Conciliação indisponível'}</h3>
+                    <p class="empty-state-message">Verifique a configuração da integração SULTS.</p>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(emptyRow);
         if (wonLostBody) {
             wonLostBody.innerHTML = '<tr><td class="empty-cell" colspan="5">Sem leads ganhos ou perdidos sincronizados.</td></tr>';
         }
@@ -547,17 +734,51 @@ function renderSultsValidation() {
         const message = searchTerm
             ? 'Nenhum lead encontrado para a busca.'
             : 'Nenhum lead da planilha foi encontrado na SULTS.';
-        tableBody.innerHTML = `<tr><td class="empty-cell" colspan="6">${message}</td></tr>`;
+        // Melhoria Visual: Empty state melhorado
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+            <td colspan="6" class="empty-cell">
+                <div class="empty-state" style="padding: 1.5rem;">
+                    <div class="empty-state-icon"><i class="fas fa-search"></i></div>
+                    <h3 class="empty-state-title">${message}</h3>
+                    <p class="empty-state-message">Tente ajustar os filtros ou verificar os dados carregados.</p>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(emptyRow);
     } else {
         tableBody.innerHTML = '';
         matches.forEach(match => {
             const row = document.createElement('tr');
+            
+            // Melhoria Visual: Badges para status
+            const sheetStatus = match.sheet_status || '-';
+            const sultsStatus = match.sults_status || '-';
+            const statusKey = match.status_key || 'outros';
+            
+            let sheetBadgeType = 'info';
+            let sultsBadgeType = 'info';
+            
+            if (statusKey === 'ganho') {
+                sheetBadgeType = 'success';
+                sultsBadgeType = 'success';
+            } else if (statusKey === 'perdido') {
+                sheetBadgeType = 'error';
+                sultsBadgeType = 'error';
+            } else if (statusKey === 'aberto') {
+                sheetBadgeType = 'info';
+                sultsBadgeType = 'info';
+            }
+            
+            const sheetBadge = createBadge(sheetStatus, sheetBadgeType).outerHTML;
+            const sultsBadge = createBadge(sultsStatus, sultsBadgeType).outerHTML;
+            
             row.innerHTML = `
                 <td>${match.lead || '-'}</td>
                 <td>${match.email || '-'}</td>
                 <td>${match.telefone || '-'}</td>
-                <td>${match.sheet_status || '-'}</td>
-                <td>${match.sults_status || '-'}</td>
+                <td>${sheetBadge}</td>
+                <td>${sultsBadge}</td>
                 <td>${match.responsavel || '-'}</td>
             `;
             tableBody.appendChild(row);
@@ -573,16 +794,31 @@ function renderSultsValidation() {
             const message = matches.length
                 ? 'Nenhum lead encontrado para a busca.'
                 : 'Sem leads ganhos ou perdidos sincronizados.';
-            wonLostBody.innerHTML = `<tr><td class="empty-cell" colspan="5">${message}</td></tr>`;
+            // Melhoria Visual: Empty state melhorado
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = `
+                <td colspan="5" class="empty-cell">
+                    <div class="empty-state" style="padding: 1.5rem;">
+                        <div class="empty-state-icon"><i class="fas fa-trophy"></i></div>
+                        <h3 class="empty-state-title">${message}</h3>
+                        <p class="empty-state-message">Leads ganhos ou perdidos aparecerão aqui quando disponíveis.</p>
+                    </div>
+                </td>
+            `;
+            wonLostBody.appendChild(emptyRow);
         } else {
             wonLostBody.innerHTML = '';
             wonLost.forEach(entry => {
                 const row = document.createElement('tr');
+                const statusKey = entry.status_key || 'outros';
+                const badgeType = statusKey === 'ganho' ? 'success' : 'error';
+                const statusBadge = createBadge(entry.sults_status || '-', badgeType).outerHTML;
+                
                 row.innerHTML = `
                     <td>${entry.lead || '-'}</td>
                     <td>${entry.email || '-'}</td>
                     <td>${entry.telefone || '-'}</td>
-                    <td>${entry.sults_status || '-'}</td>
+                    <td>${statusBadge}</td>
                     <td>${entry.responsavel || '-'}</td>
                 `;
                 wonLostBody.appendChild(row);
@@ -1021,7 +1257,18 @@ function renderLeadsTable() {
     leadsTableBody.innerHTML = '';
     
     if (!leads.length) {
-        leadsTableBody.innerHTML = '<tr><td colspan="9">Nenhum lead encontrado</td></tr>';
+        // Melhoria Visual: Empty state melhorado
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+            <td colspan="9" class="empty-cell">
+                <div class="empty-state" style="padding: 2rem;">
+                    <div class="empty-state-icon"><i class="fas fa-inbox"></i></div>
+                    <h3 class="empty-state-title">Nenhum lead encontrado</h3>
+                    <p class="empty-state-message">Tente ajustar os filtros ou carregar novos dados.</p>
+                </div>
+            </td>
+        `;
+        leadsTableBody.appendChild(emptyRow);
         return;
     }
     
@@ -1070,19 +1317,24 @@ function renderLeadsTable() {
         tdTelefone.appendChild(telefoneContainer);
         tr.appendChild(tdTelefone);
         
-        // Status
+        // Melhoria Visual: Status com badges coloridos
         const tdStatus = document.createElement('td');
-        const statusBadge = document.createElement('span');
-        statusBadge.className = 'status-badge';
-        const status = lead.status || 'Sem status';
-        statusBadge.textContent = status;
-        if (status === 'aberto' || status === 'Aberto') {
-            statusBadge.style.backgroundColor = '#F97316';
-        } else if (status === 'ganho' || status === 'Ganho') {
-            statusBadge.style.backgroundColor = '#10B981';
-        } else if (status === 'perdido' || status === 'Perdido') {
-            statusBadge.style.backgroundColor = '#EF4444';
+        const status = (lead.status || 'Sem status').toLowerCase();
+        let badgeType = 'info';
+        let badgeIcon = 'circle';
+        
+        if (status.includes('aberto') || status.includes('andamento')) {
+            badgeType = 'info';
+            badgeIcon = 'clock';
+        } else if (status.includes('ganho') || status.includes('won')) {
+            badgeType = 'success';
+            badgeIcon = 'check-circle';
+        } else if (status.includes('perdido') || status.includes('lost')) {
+            badgeType = 'error';
+            badgeIcon = 'times-circle';
         }
+        
+        const statusBadge = createBadge(lead.status || 'Sem status', badgeType, badgeIcon);
         tdStatus.appendChild(statusBadge);
         tr.appendChild(tdStatus);
         
@@ -2216,7 +2468,18 @@ function renderCreativesCharts() {
 function renderCreativesTable(creativeDetails) {
     const tableBody = document.getElementById('creativesTableBody');
     if (!creativeDetails || creativeDetails.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="8">Nenhum dado de criativo disponível</td></tr>';
+        // Melhoria Visual: Empty state melhorado
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+            <td colspan="8" class="empty-cell">
+                <div class="empty-state" style="padding: 1.5rem;">
+                    <div class="empty-state-icon"><i class="fas fa-paint-brush"></i></div>
+                    <h3 class="empty-state-title">Nenhum dado de criativo disponível</h3>
+                    <p class="empty-state-message">Carregue uma planilha com dados de criativos para análise.</p>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(emptyRow);
         return;
     }
     
@@ -2380,15 +2643,22 @@ function switchAnalysisType() {
     const analysisType = document.getElementById('analysisType').value;
     
     // Hide all sections
-    document.getElementById('overviewSection').style.display = 'none';
-    document.getElementById('temporalSection').style.display = 'none';
-    document.getElementById('financialSection').style.display = 'none';
-    document.getElementById('creativesSection').style.display = 'none';
+    const sections = ['overviewSection', 'temporalSection', 'financialSection', 'creativesSection', 'comparisonSection'];
+    sections.forEach(sectionId => {
+        const section = document.getElementById(sectionId);
+        if (section) section.style.display = 'none';
+    });
     
     // Show selected section
     switch(analysisType) {
         case 'overview':
             document.getElementById('overviewSection').style.display = 'block';
+            break;
+        case 'comparison':
+            document.getElementById('comparisonSection').style.display = 'block';
+            if (typeof renderTemporalComparison === 'function') {
+                renderTemporalComparison();
+            }
             break;
         case 'temporal':
             document.getElementById('temporalSection').style.display = 'block';
@@ -2474,10 +2744,177 @@ function resetFilters() {
     renderKPIs();
 }
 
+// ============================================
+// EXPORTAÇÃO DE DADOS - MELHORIA 1
+// ============================================
 function exportChart(chartType) {
-    // This would implement chart export functionality
-    console.log('Exporting chart:', chartType);
-    alert('Funcionalidade de exportação será implementada em breve!');
+    let chart = null;
+    let filename = '';
+    
+    switch(chartType) {
+        case 'temporal':
+            chart = temporalChart;
+            filename = 'grafico_temporal.png';
+            break;
+        case 'distribution':
+            chart = distributionChart;
+            filename = 'grafico_distribuicao.png';
+            break;
+        case 'temporal-detailed':
+            chart = temporalDetailedChart;
+            filename = 'grafico_temporal_detalhado.png';
+            break;
+        case 'costs':
+            chart = costsChart;
+            filename = 'grafico_investimento.png';
+            break;
+        case 'conversion':
+            chart = conversionChart;
+            filename = 'grafico_conversao.png';
+            break;
+        case 'creatives':
+            chart = creativesChart;
+            filename = 'grafico_criativos.png';
+            break;
+        case 'campaigns':
+            chart = campaignsChart;
+            filename = 'grafico_campanhas.png';
+            break;
+        default:
+            showNotification('Tipo de gráfico não reconhecido', 'error');
+            return;
+    }
+    
+    if (!chart) {
+        showNotification('Gráfico não disponível para exportação', 'error');
+        return;
+    }
+    
+    try {
+        const url = chart.toBase64Image('image/png', 1.0);
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = url;
+        link.click();
+        showNotification('Gráfico exportado com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao exportar gráfico:', error);
+        showNotification('Erro ao exportar gráfico', 'error');
+    }
+}
+
+// Exportar tabela de criativos
+function exportCreativesTable() {
+    if (!currentData || !currentData.creative_stats) {
+        showNotification('Nenhum dado disponível para exportar', 'error');
+        return;
+    }
+    
+    const stats = currentData.creative_stats;
+    const headers = ['Criativo', 'Total Leads', 'Total MQLs', 'CPL', 'CPMQL', 'Investimento', 'Status'];
+    const rows = stats.map(stat => [
+        stat.creative || '-',
+        stat.Total_Leads || 0,
+        stat.Total_MQLs || 0,
+        formatCurrency(stat.CPL || 0),
+        formatCurrency(stat.CPMQL || 0),
+        formatCurrency(stat.Investimento || 0),
+        stat.Performance_Status || '-'
+    ]);
+    
+    exportTableToCSV(headers, rows, 'criativos_ranking.csv');
+}
+
+// Exportar tabela principal
+function exportMainTable() {
+    if (!filteredData || !filteredData.raw_data || filteredData.raw_data.length === 0) {
+        showNotification('Nenhum dado disponível para exportar', 'error');
+        return;
+    }
+    
+    const data = filteredData.raw_data;
+    if (data.length === 0) return;
+    
+    // Obter cabeçalhos do primeiro objeto
+    const headers = Object.keys(data[0]);
+    const rows = data.map(row => headers.map(header => {
+        const value = row[header];
+        return value !== null && value !== undefined ? String(value) : '';
+    }));
+    
+    exportTableToCSV(headers, rows, 'dados_principais.csv');
+}
+
+// Exportar tabela de leads
+function exportLeadsTable() {
+    if (!filteredLeadsData || !filteredLeadsData.leads || filteredLeadsData.leads.length === 0) {
+        showNotification('Nenhum lead disponível para exportar', 'error');
+        return;
+    }
+    
+    const leads = filteredLeadsData.leads;
+    const headers = ['Nome', 'Email', 'Telefone', 'Status', 'Fase', 'Categoria', 'Responsável', 'Unidade', 'Data'];
+    const rows = leads.map(lead => [
+        lead.nome || '-',
+        lead.email || '-',
+        lead.telefone || '-',
+        lead.status || '-',
+        lead.fase || '-',
+        lead.categoria || '-',
+        lead.responsavel || '-',
+        lead.unidade || '-',
+        lead.data || '-'
+    ]);
+    
+    exportTableToCSV(headers, rows, 'leads.csv');
+}
+
+// Função genérica para exportar tabela para CSV
+function exportTableToCSV(headers, rows, filename) {
+    // Adiciona BOM para Excel reconhecer UTF-8
+    let csv = '\ufeff';
+    
+    // Cabeçalhos
+    csv += headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(',') + '\n';
+    
+    // Linhas
+    rows.forEach(row => {
+        csv += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',') + '\n';
+    });
+    
+    downloadCSV(csv, filename);
+    showNotification(`Tabela exportada: ${filename}`, 'success');
+}
+
+// Exportar para Excel (usando CSV com extensão .xlsx ou chamando backend)
+async function exportToExcel(data, filename = 'dados.xlsx') {
+    try {
+        const response = await fetch('/api/export/excel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ data, filename })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erro ao exportar para Excel');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        window.URL.revokeObjectURL(url);
+        showNotification('Arquivo Excel exportado com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao exportar para Excel:', error);
+        // Fallback para CSV
+        exportTableToCSV(Object.keys(data[0] || {}), data.map(row => Object.values(row)), filename.replace('.xlsx', '.csv'));
+        showNotification('Exportado como CSV (Excel não disponível)', 'info');
+    }
 }
 
 function calculateKPIs(data) {
@@ -2975,23 +3412,63 @@ function initializeLeadControls() {
 function initializeSultsData() {
     const sultsDataBtn = document.getElementById('sultsDataBtn');
     if (sultsDataBtn) {
-        sultsDataBtn.addEventListener('click', handleSultsDataLoad);
+        // Remover event listeners anteriores para evitar duplicação
+        const newBtn = sultsDataBtn.cloneNode(true);
+        sultsDataBtn.parentNode.replaceChild(newBtn, sultsDataBtn);
+        newBtn.addEventListener('click', handleSultsDataLoad);
+        newBtn.setAttribute('data-initialized', 'true');
+        console.log('Botão SULTS inicializado com sucesso');
+    } else {
+        console.error('Botão SULTS não encontrado! ID: sultsDataBtn');
+        // Tentar novamente após um pequeno delay
+        setTimeout(() => {
+            const retryBtn = document.getElementById('sultsDataBtn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', handleSultsDataLoad);
+                retryBtn.setAttribute('data-initialized', 'true');
+                console.log('Botão SULTS inicializado após retry');
+            } else {
+                console.error('Botão SULTS ainda não encontrado após retry');
+            }
+        }, 500);
     }
 }
 
-async function handleSultsDataLoad() {
-    const sultsValidationSection = document.getElementById('sultsValidationSection');
-    if (sultsValidationSection) {
-        sultsValidationSection.style.display = 'none';
+async function handleSultsDataLoad(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
     }
     
-    showLoading();
+    console.log('handleSultsDataLoad chamado');
+    const sultsDataBtn = document.getElementById('sultsDataBtn');
+    const originalText = sultsDataBtn ? sultsDataBtn.innerHTML : '';
     
     try {
+        // Melhoria Visual: Loading state contextual
+        if (sultsDataBtn) {
+            sultsDataBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
+            sultsDataBtn.disabled = true;
+        }
+        
+        showLoading('Carregando dados SULTS...', 'Buscando leads da API SULTS');
+        
+        const sultsValidationSection = document.getElementById('sultsValidationSection');
+        if (sultsValidationSection) {
+            sultsValidationSection.style.display = 'none';
+        }
+        
         const response = await fetch('/api/sults/verificar-leads');
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { error: errorText || `HTTP error! status: ${response.status}` };
+            }
+            throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
@@ -3000,16 +3477,26 @@ async function handleSultsDataLoad() {
         
         if (result.success && result.data) {
             displaySultsData(result.data);
+            // Melhoria Visual: Toast melhorado
+            showNotification('Dados da SULTS carregados com sucesso!', 'success');
         } else {
-            const errorMsg = result.error || result.message || 'Erro desconhecido';
+            const errorMsg = result.error || result.message || 'Erro desconhecido ao carregar dados';
             console.error('Erro na resposta:', errorMsg);
-            alert('Erro ao carregar dados da SULTS: ' + errorMsg);
+            // Melhoria Visual: Toast melhorado
+            showNotification('Erro ao carregar dados da SULTS: ' + errorMsg, 'error');
             showUpload();
         }
     } catch (error) {
         console.error('Erro ao buscar dados SULTS:', error);
-        alert('Erro ao conectar com a API SULTS: ' + error.message + '. Verifique se o servidor está rodando na porta 5003.');
+        // Melhoria Visual: Toast melhorado
+        showNotification('Erro ao conectar com a API SULTS: ' + error.message, 'error');
         showUpload();
+    } finally {
+        // Restore button state
+        if (sultsDataBtn) {
+            sultsDataBtn.innerHTML = originalText;
+            sultsDataBtn.disabled = false;
+        }
     }
 }
 
@@ -3166,9 +3653,10 @@ async function handleAutoUpload() {
     const originalText = autoUploadBtn.innerHTML;
     
     try {
-        // Show loading state
+        // Melhoria Visual: Loading state contextual
         autoUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
         autoUploadBtn.disabled = true;
+        showLoading('Carregando Meta Ads...', 'Buscando planilhas no Google Drive');
         
         // Make request to auto-upload endpoint
         const response = await fetch('/auto-upload', {
@@ -3178,6 +3666,17 @@ async function handleAutoUpload() {
             }
         });
         
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { error: errorText || `HTTP error! status: ${response.status}` };
+            }
+            throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+        }
+        
         const result = await response.json();
         console.log('Response from auto-upload:', result);
         
@@ -3186,18 +3685,25 @@ async function handleAutoUpload() {
             currentData = result.data;
             filteredData = currentData;
             
-            // Show dashboard (this will render everything)
-            showDashboard();
+            // Show dashboard sem gráficos para Meta Ads (não acrescentam muito)
+            showDashboard(true);
             
-            // Show success message
-            showNotification(result.message || 'Planilha carregada automaticamente do Google Drive!', 'success');
+            // Melhoria Visual: Toast melhorado
+            showNotification(result.message || 'Planilha do Meta Ads carregada automaticamente do Google Drive!', 'success');
         } else {
-            showNotification(result.error || 'Erro ao carregar planilha automaticamente', 'error');
+            const errorMsg = result.error || result.message || 'Erro ao carregar planilha automaticamente';
+            console.error('Erro na resposta:', errorMsg);
+            // Melhoria Visual: Toast melhorado
+            showNotification('Erro ao carregar Meta Ads: ' + errorMsg, 'error');
+            showUpload();
         }
         
     } catch (error) {
-        console.error('Erro no upload automático:', error);
-        showNotification('Erro de conexão ao carregar planilha automaticamente', 'error');
+        console.error('Erro no upload automático do Meta Ads:', error);
+        // Melhoria Visual: Toast melhorado com mensagem mais específica
+        const errorMessage = error.message || 'Erro de conexão';
+        showNotification('Erro ao carregar Meta Ads: ' + errorMessage + '. Verifique se as credenciais do Google Drive estão configuradas.', 'error');
+        showUpload();
     } finally {
         // Restore button state
         autoUploadBtn.innerHTML = originalText;
@@ -3210,9 +3716,10 @@ async function handleGoogleAdsUpload() {
     const originalText = googleAdsUploadBtn.innerHTML;
     
     try {
-        // Show loading state
+        // Melhoria Visual: Loading state contextual
         googleAdsUploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
         googleAdsUploadBtn.disabled = true;
+        showLoading('Carregando Google Ads...', 'Buscando planilhas no Google Drive');
         
         // Make request to google-ads-upload endpoint
         const response = await fetch('/google-ads-upload', {
@@ -3230,10 +3737,10 @@ async function handleGoogleAdsUpload() {
             currentData = result.data;
             filteredData = currentData;
             
-            // Show dashboard
-            showDashboard();
+            // Show dashboard sem gráficos para Google Ads (não acrescentam muito)
+            showDashboard(true);
             
-            // Show success message
+            // Melhoria Visual: Toast melhorado
             showNotification(result.message || 'Planilha do Google Ads carregada automaticamente!', 'success');
         } else {
             showNotification(result.error || 'Erro ao carregar planilha do Google Ads', 'error');
@@ -3330,26 +3837,66 @@ async function handleLeadsFileUpload(event) {
     }
 }
 
+// Melhoria Visual: Toast Notifications Melhorados
 function showNotification(message, type = 'info') {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-        <span>${message}</span>
+    const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    const icons = {
+        success: 'check-circle',
+        error: 'exclamation-circle',
+        warning: 'exclamation-triangle',
+        info: 'info-circle'
+    };
+    
+    toast.innerHTML = `
+        <i class="fas fa-${icons[type] || 'info-circle'} toast-icon"></i>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close" aria-label="Fechar">
+            <i class="fas fa-times"></i>
+        </button>
     `;
     
-    // Add to page
-    document.body.appendChild(notification);
+    toastContainer.appendChild(toast);
     
     // Show notification
-    setTimeout(() => notification.classList.add('show'), 100);
+    setTimeout(() => toast.classList.add('show'), 100);
     
-    // Hide after 5 seconds
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => document.body.removeChild(notification), 300);
+    // Auto-dismiss after 5 seconds
+    const autoDismiss = setTimeout(() => {
+        dismissToast(toast);
     }, 5000);
+    
+    // Manual dismiss
+    toast.querySelector('.toast-close').addEventListener('click', () => {
+        clearTimeout(autoDismiss);
+        dismissToast(toast);
+    });
+    
+    // Pause auto-dismiss on hover
+    toast.addEventListener('mouseenter', () => clearTimeout(autoDismiss));
+    toast.addEventListener('mouseleave', () => {
+        setTimeout(() => dismissToast(toast), 5000);
+    });
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+    return container;
+}
+
+function dismissToast(toast) {
+    toast.classList.remove('show');
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 300);
 }
 
 // Pipeline Kanban

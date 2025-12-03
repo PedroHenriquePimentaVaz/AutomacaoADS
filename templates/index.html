@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/visual-improvements.css') }}">
 </head>
 <body>
     <!-- Header -->
@@ -24,6 +25,10 @@
                     </div>
                 </div>
                 <div class="header-actions">
+                    <button class="theme-toggle" id="themeToggle" aria-label="Alternar tema">
+                        <i class="fas fa-moon" id="themeIcon"></i>
+                        <span id="themeText">Escuro</span>
+                    </button>
                     <button class="btn btn-primary" id="backToStartBtn" onclick="backToStart()" style="display: none;">
                         <i class="fas fa-home"></i>
                         Voltar ao Início
@@ -53,7 +58,7 @@
                             <button class="btn btn-secondary" id="autoLeadsUploadBtn">
                                 <i class="fas fa-users"></i> Carregar Leads
                             </button>
-                            <button class="btn btn-primary" id="sultsDataBtn">
+                            <button class="btn btn-primary" id="sultsDataBtn" type="button">
                                 <i class="fas fa-sync"></i> Carregar Dados SULTS
                             </button>
                         </div>
@@ -474,7 +479,10 @@
                     <div class="table-header">
                         <h3>Dados Detalhados</h3>
                         <div class="table-actions">
-                            <input type="text" id="searchInput" placeholder="Buscar..." class="search-input">
+                            <div class="search-autocomplete">
+                                <input type="text" id="searchInput" placeholder="Buscar..." class="search-input" data-tooltip="Digite para buscar nos dados da tabela">
+                                <div id="autocompleteDropdown" class="autocomplete-dropdown" style="display: none;"></div>
+                            </div>
                             <select id="rowsSelect" class="rows-select">
                                 <option value="50">50 linhas</option>
                                 <option value="100">100 linhas</option>
@@ -707,6 +715,9 @@
                                 <option value="200">200 linhas</option>
                                 <option value="all">Todas</option>
                             </select>
+                            <button class="btn btn-sm btn-outline" onclick="exportLeadsTable()" data-tooltip="Exportar leads para CSV">
+                                <i class="fas fa-download"></i> Exportar CSV
+                            </button>
                         </div>
                     </div>
                     <div class="table-container">
@@ -720,8 +731,12 @@
         </div>
     </main>
 
+    <!-- Toast Notifications Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=leads-dashboard"></script>
+    <script src="{{ url_for('static', filename='js/improvements.js') }}"></script>
 </body>
 </html>

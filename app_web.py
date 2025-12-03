@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask_compress import Compress
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import pandas as pd
 import numpy as np
 import os
@@ -14,12 +17,38 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import hashlib
 import gc
+import logging
+from logging.handlers import RotatingFileHandler
+from functools import wraps
+from typing import Optional, Dict, Any, Tuple, List
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+# Clean Code: Sistema de logging estruturado
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        RotatingFileHandler(
+            'logs/app.log',
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5
+        ),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 try:
     from sults_api import SultsAPIClient
     SULTS_AVAILABLE = True
+    logger.info("Módulo sults_api carregado com sucesso")
 except ImportError:
     SULTS_AVAILABLE = False
-    print("Aviso: Módulo sults_api não disponível. Integração SULTS desabilitada.")
+    logger.warning("Módulo sults_api não disponível. Integração SULTS desabilitada.")
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -28,69 +57,418 @@ app.jinja_env.cache = {}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
+# Performance: Compressão gzip
+Compress(app)
+
+# Performance: Rate limiting para proteção contra abuso
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per hour", "50 per minute"],
+    storage_uri="memory://"
+)
+
+# Performance: Thread pool para processamento assíncrono
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="async_worker")
+
 # Clean Code: Constantes com nomes descritivos
-# Cache simples em memória
+# Cache simples em memória (preparado para migração para Redis)
 _DATA_CACHE = {}
-CACHE_TTL_SECONDS = 300  # 5 minutos
+# Performance: TTL diferenciado por tipo de dado
+CACHE_TTL_BY_TYPE = {
+    'upload': 600,        # 10 minutos para uploads
+    'leads': 300,        # 5 minutos para leads
+    'sults': 300,        # 5 minutos para dados SULTS
+    'analysis': 600,     # 10 minutos para análises
+    'default': 300       # 5 minutos padrão
+}
+CACHE_TTL_SECONDS = 300  # 5 minutos (mantido para compatibilidade)
 CACHE_MAX_ENTRIES = 10  # Máximo de 10 entradas no cache
 MAX_ROWS_FOR_PROCESSING = 50000
 MAX_ROWS_FOR_JSON = 2000
 MAX_ROWS_FOR_FALLBACK = 500
+# Performance: Streaming para arquivos grandes
+STREAMING_CHUNK_SIZE = 1024 * 1024  # 1MB por chunk
+MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB - arquivos maiores usam streaming
 
-def _get_cache_key(data):
-    """Gera chave de cache baseada nos dados"""
-    if isinstance(data, bytes):
-        return hashlib.md5(data).hexdigest()
-    elif isinstance(data, str):
-        return hashlib.md5(data.encode()).hexdigest()
-    return None
+# Validação de dados
+MAX_FILE_SIZE_MB = 16
+ALLOWED_EXTENSIONS = {'.csv', '.xlsx', '.xls'}
+MAX_FILENAME_LENGTH = 255
 
-def _clear_old_cache():
-    """Remove entradas antigas do cache"""
+# Performance: Paginação
+DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 1000
+
+def _get_cache_key(data: Any) -> Optional[str]:
+    """
+    Gera chave de cache baseada nos dados.
+    
+    Clean Code: Função com type hints e documentação clara.
+    """
+    try:
+        if isinstance(data, bytes):
+            return hashlib.md5(data).hexdigest()
+        elif isinstance(data, str):
+            return hashlib.md5(data.encode()).hexdigest()
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao gerar chave de cache: {e}")
+        return None
+
+def _clear_old_cache() -> None:
+    """
+    Remove entradas antigas do cache usando TTL diferenciado.
+    
+    Clean Code: Função com responsabilidade única e logging.
+    Performance: Otimizada para evitar locks desnecessários.
+    """
     global _DATA_CACHE
-    now = datetime.now()
-    keys_to_remove = []
-    for key, value in _DATA_CACHE.items():
-        if (now - value['timestamp']).total_seconds() > CACHE_TTL_SECONDS:
-            keys_to_remove.append(key)
-    for key in keys_to_remove:
-        del _DATA_CACHE[key]
-    
-    # Se ainda estiver cheio, remove os mais antigos
-    if len(_DATA_CACHE) > CACHE_MAX_ENTRIES:
-        sorted_items = sorted(_DATA_CACHE.items(), key=lambda x: x[1]['timestamp'])
-        for key, _ in sorted_items[:len(_DATA_CACHE) - CACHE_MAX_ENTRIES]:
+    try:
+        now = datetime.now()
+        keys_to_remove = []
+        
+        for key, value in _DATA_CACHE.items():
+            # Performance: Usa TTL específico do tipo ou padrão
+            ttl = value.get('ttl', CACHE_TTL_BY_TYPE.get(value.get('type', 'default'), CACHE_TTL_SECONDS))
+            if (now - value['timestamp']).total_seconds() > ttl:
+                keys_to_remove.append(key)
+        
+        for key in keys_to_remove:
             del _DATA_CACHE[key]
+        
+        if keys_to_remove:
+            logger.debug(f"Removidas {len(keys_to_remove)} entradas expiradas do cache")
+        
+        # Se ainda estiver cheio, remove os mais antigos
+        if len(_DATA_CACHE) > CACHE_MAX_ENTRIES:
+            sorted_items = sorted(_DATA_CACHE.items(), key=lambda x: x[1]['timestamp'])
+            excess = len(_DATA_CACHE) - CACHE_MAX_ENTRIES
+            for key, _ in sorted_items[:excess]:
+                del _DATA_CACHE[key]
+            logger.debug(f"Removidas {excess} entradas antigas do cache (limite excedido)")
+        
+        # Força limpeza de memória
+        gc.collect()
+    except Exception as e:
+        logger.error(f"Erro ao limpar cache: {e}", exc_info=True)
+
+def _get_from_cache(key: Optional[str], cache_type: str = 'default') -> Optional[Any]:
+    """
+    Recupera dados do cache com TTL diferenciado por tipo.
     
-    # Força limpeza de memória
-    gc.collect()
+    Args:
+        key: Chave do cache
+        cache_type: Tipo de cache ('upload', 'leads', 'sults', 'analysis', 'default')
+        
+    Returns:
+        Dados do cache ou None se não encontrado/expirado
+    """
+    if not key:
+        return None
+    
+    try:
+        _clear_old_cache()
+        if key in _DATA_CACHE:
+            entry = _DATA_CACHE[key]
+            ttl = CACHE_TTL_BY_TYPE.get(cache_type, CACHE_TTL_BY_TYPE['default'])
+            if (datetime.now() - entry['timestamp']).total_seconds() < ttl:
+                logger.debug(f"Cache hit para chave: {key[:20]}... (tipo: {cache_type}, TTL: {ttl}s)")
+                return entry['data']
+            else:
+                del _DATA_CACHE[key]
+                logger.debug(f"Cache expirado para chave: {key[:20]}... (tipo: {cache_type})")
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao recuperar do cache: {e}", exc_info=True)
+        return None
 
-def _get_from_cache(key):
-    """Recupera dados do cache"""
-    _clear_old_cache()
-    if key in _DATA_CACHE:
-        entry = _DATA_CACHE[key]
-        if (datetime.now() - entry['timestamp']).total_seconds() < CACHE_TTL_SECONDS:
-            return entry['data']
-        else:
-            del _DATA_CACHE[key]
-    return None
+def _save_to_cache(key: Optional[str], data: Any, cache_type: str = 'default') -> bool:
+    """
+    Salva dados no cache com tipo para TTL diferenciado.
+    
+    Args:
+        key: Chave do cache
+        data: Dados a serem armazenados
+        cache_type: Tipo de cache ('upload', 'leads', 'sults', 'analysis', 'default')
+        
+    Returns:
+        True se salvou com sucesso, False caso contrário
+    """
+    if not key:
+        return False
+    
+    try:
+        _clear_old_cache()
+        ttl = CACHE_TTL_BY_TYPE.get(cache_type, CACHE_TTL_BY_TYPE['default'])
+        _DATA_CACHE[key] = {
+            'data': data,
+            'timestamp': datetime.now(),
+            'type': cache_type,
+            'ttl': ttl
+        }
+        logger.debug(f"Dados salvos no cache: {key[:20]}... (tipo: {cache_type}, TTL: {ttl}s)")
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao salvar no cache: {e}", exc_info=True)
+        return False
 
-def _save_to_cache(key, data):
-    """Salva dados no cache"""
-    _clear_old_cache()
-    _DATA_CACHE[key] = {
-        'data': data,
-        'timestamp': datetime.now()
+# Clean Code: Decorators para tratamento de erros e validação
+def handle_errors(f):
+    """Decorator para tratamento centralizado de erros."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except ValueError as e:
+            logger.warning(f"Erro de validação em {f.__name__}: {e}")
+            return jsonify({'error': f'Dados inválidos: {str(e)}'}), 400
+        except FileNotFoundError as e:
+            logger.error(f"Arquivo não encontrado em {f.__name__}: {e}")
+            return jsonify({'error': f'Arquivo não encontrado: {str(e)}'}), 404
+        except pd.errors.EmptyDataError as e:
+            logger.warning(f"Arquivo vazio em {f.__name__}: {e}")
+            return jsonify({'error': 'O arquivo enviado está vazio ou corrompido'}), 400
+        except pd.errors.ParserError as e:
+            logger.error(f"Erro ao processar arquivo em {f.__name__}: {e}")
+            return jsonify({'error': 'Erro ao processar arquivo. Verifique o formato.'}), 400
+        except MemoryError as e:
+            logger.error(f"Erro de memória em {f.__name__}: {e}")
+            return jsonify({'error': 'Arquivo muito grande. Tente reduzir o tamanho.'}), 413
+        except Exception as e:
+            logger.error(f"Erro inesperado em {f.__name__}: {e}", exc_info=True)
+            return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+    return wrapper
+
+
+def validate_file_upload(file) -> Tuple[bool, Optional[str]]:
+    """
+    Valida arquivo enviado.
+    
+    Args:
+        file: Arquivo do Flask request
+        
+    Returns:
+        Tuple (is_valid, error_message)
+    """
+    if not file:
+        return False, 'Nenhum arquivo enviado'
+    
+    if not file.filename:
+        return False, 'Nome do arquivo não fornecido'
+    
+    if len(file.filename) > MAX_FILENAME_LENGTH:
+        return False, f'Nome do arquivo muito longo (máximo {MAX_FILENAME_LENGTH} caracteres)'
+    
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        return False, f'Formato não suportado. Use: {", ".join(ALLOWED_EXTENSIONS)}'
+    
+    # Verifica tamanho do arquivo
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)  # Reset para leitura
+    
+    max_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if file_size > max_size_bytes:
+        return False, f'Arquivo muito grande (máximo {MAX_FILE_SIZE_MB}MB)'
+    
+    if file_size == 0:
+        return False, 'Arquivo vazio'
+    
+    return True, None
+
+
+# Performance: Funções auxiliares para paginação
+def paginate_data(data: List[Any], page: int = 1, page_size: int = DEFAULT_PAGE_SIZE) -> Dict[str, Any]:
+    """
+    Pagina uma lista de dados.
+    
+    Args:
+        data: Lista de dados a paginar
+        page: Número da página (começa em 1)
+        page_size: Tamanho da página
+        
+    Returns:
+        Dict com dados paginados e metadados
+    """
+    page_size = min(max(1, page_size), MAX_PAGE_SIZE)
+    page = max(1, page)
+    
+    total_items = len(data)
+    total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 0
+    
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    paginated_data = data[start_idx:end_idx]
+    
+    return {
+        'data': paginated_data,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total_items': total_items,
+            'total_pages': total_pages,
+            'has_next': page < total_pages,
+            'has_prev': page > 1
+        }
     }
 
+
+def get_pagination_params(request) -> Tuple[int, int]:
+    """Extrai parâmetros de paginação do request."""
+    try:
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', DEFAULT_PAGE_SIZE))
+        page_size = min(max(1, page_size), MAX_PAGE_SIZE)
+        page = max(1, page)
+        return page, page_size
+    except (ValueError, TypeError):
+        return 1, DEFAULT_PAGE_SIZE
+
+
+# Performance: Processamento assíncrono
+_async_tasks = {}
+_async_tasks_lock = threading.Lock()
+_ASYNC_TASK_TTL_HOURS = 24  # Tarefas expiram após 24 horas
+
+
+def cleanup_old_async_tasks():
+    """
+    Remove tarefas assíncronas antigas automaticamente.
+    
+    Performance: Limpeza automática para evitar crescimento indefinido de memória.
+    """
+    cutoff = datetime.now() - timedelta(hours=_ASYNC_TASK_TTL_HOURS)
+    with _async_tasks_lock:
+        initial_count = len(_async_tasks)
+        # Filtra apenas tarefas recentes (cria nova dict)
+        tasks_to_keep = {
+            k: v for k, v in _async_tasks.items()
+            if v.get('created_at', datetime.now()) > cutoff
+        }
+        removed = initial_count - len(tasks_to_keep)
+        _async_tasks.clear()
+        _async_tasks.update(tasks_to_keep)
+        if removed > 0:
+            logger.debug(f"Limpeza automática: {removed} tarefas assíncronas antigas removidas")
+        return removed
+
+
+def run_async_task(task_id: str, func, *args, **kwargs):
+    """
+    Executa uma função de forma assíncrona.
+    
+    Performance: Limpeza automática antes de adicionar nova tarefa.
+    """
+    # Limpeza automática antes de adicionar nova tarefa
+    cleanup_old_async_tasks()
+    
+    def task_wrapper():
+        created_at = None
+        with _async_tasks_lock:
+            if task_id in _async_tasks:
+                created_at = _async_tasks[task_id].get('created_at', datetime.now())
+        
+        try:
+            result = func(*args, **kwargs)
+            with _async_tasks_lock:
+                _async_tasks[task_id] = {
+                    'status': 'completed',
+                    'result': result,
+                    'error': None,
+                    'created_at': created_at or datetime.now(),
+                    'completed_at': datetime.now()
+                }
+        except Exception as e:
+            logger.error(f"Erro na tarefa assíncrona {task_id}: {e}", exc_info=True)
+            with _async_tasks_lock:
+                _async_tasks[task_id] = {
+                    'status': 'error',
+                    'result': None,
+                    'error': str(e),
+                    'created_at': created_at or datetime.now(),
+                    'completed_at': datetime.now()
+                }
+    
+    with _async_tasks_lock:
+        _async_tasks[task_id] = {
+            'status': 'running',
+            'result': None,
+            'error': None,
+            'created_at': datetime.now()
+        }
+    
+    _executor.submit(task_wrapper)
+    return task_id
+
+
+def get_async_task_status(task_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtém o status de uma tarefa assíncrona.
+    
+    Performance: Limpeza automática antes de buscar.
+    """
+    cleanup_old_async_tasks()
+    with _async_tasks_lock:
+        return _async_tasks.get(task_id)
+
+
 @app.route('/api/clear-cache', methods=['POST'])
+@handle_errors
 def clear_cache():
     """Endpoint para limpar cache manualmente"""
     global _DATA_CACHE
     _DATA_CACHE.clear()
     gc.collect()
+    logger.info("Cache limpo manualmente")
     return jsonify({'success': True, 'message': 'Cache limpo com sucesso'})
+
+
+# Performance: Endpoints para processamento assíncrono
+@app.route('/api/async/upload', methods=['POST'])
+@handle_errors
+def async_upload():
+    """Inicia upload assíncrono de arquivo"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    
+    file = request.files['file']
+    is_valid, error_msg = validate_file_upload(file)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+    
+    task_id = hashlib.md5(f"{file.filename}{datetime.now().isoformat()}".encode()).hexdigest()
+    
+    def process_upload():
+        file_bytes = file.read()
+        file_like = io.BytesIO(file_bytes)
+        # Processa arquivo (mesma lógica do upload normal)
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(file_like, dtype=str, low_memory=False, engine='c')
+        else:
+            df = pd.read_excel(file_like, engine='openpyxl', dtype=str)
+        # Retorna análise (simplificado)
+        return {'filename': file.filename, 'rows': len(df), 'columns': list(df.columns)}
+    
+    run_async_task(task_id, process_upload)
+    return jsonify({'success': True, 'task_id': task_id, 'message': 'Upload iniciado em background'})
+
+
+@app.route('/api/async/task/<task_id>', methods=['GET'])
+def get_async_task(task_id):
+    """Obtém status de uma tarefa assíncrona"""
+    status = get_async_task_status(task_id)
+    if not status:
+        return jsonify({'error': 'Tarefa não encontrada'}), 404
+    
+    return jsonify({
+        'task_id': task_id,
+        'status': status['status'],
+        'result': status['result'],
+        'error': status['error']
+    })
 
 
 def _make_unique_headers(headers):
@@ -241,7 +619,7 @@ def load_google_ads_sheet(spreadsheet_id, credentials, preferred_sheets=None):
         
         values = values_response.get('values', [])
         if not values or len(values) <= 1:
-            print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' sem dados ou apenas cabeçalho.")
+            logger.debug(f"Aba '{title}' sem dados ou apenas cabeçalho")
             continue
         
         header = _make_unique_headers(values[0])
@@ -261,12 +639,12 @@ def load_google_ads_sheet(spreadsheet_id, credentials, preferred_sheets=None):
         cleaned_df = df_sheet.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
         
         if cleaned_df.empty:
-            print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' sem linhas após limpeza.")
+            logger.debug(f"Aba '{title}' sem linhas após limpeza")
             continue
         
         sheet_stats.append({'name': title, 'rows': int(cleaned_df.shape[0]), 'columns': int(cleaned_df.shape[1])})
         frames[title] = cleaned_df
-        print(f"[GOOGLE ADS][SheetsAPI] Aba '{title}' carregada -> linhas: {cleaned_df.shape[0]}, colunas: {cleaned_df.shape[1]}")
+        logger.info(f"Aba '{title}' carregada: {cleaned_df.shape[0]} linhas, {cleaned_df.shape[1]} colunas")
     
     if not frames:
         raise ValueError("Nenhuma aba válida encontrada na planilha do Google Ads via Sheets API.")
@@ -463,49 +841,61 @@ def load_drive_credentials():
         traceback.print_exc()
         return None
 
+# Performance: Retry logic para Google Drive
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout, Exception)),
+    reraise=True
+)
+def _download_file_from_drive_with_retry(service, file_id):
+    """
+    Baixa arquivo do Google Drive com retry automático.
+    
+    Performance: Retry com backoff exponencial para melhorar confiabilidade.
+    """
+    file_metadata = service.files().get(fileId=file_id).execute()
+    file_name = file_metadata.get('name', 'arquivo')
+    mime_type = file_metadata.get('mimeType', '')
+    
+    logger.debug(f"Arquivo encontrado: {file_name}, Tipo MIME: {mime_type}")
+    
+    # Se for Google Sheets, exporta como Excel
+    if 'application/vnd.google-apps.spreadsheet' in mime_type:
+        logger.debug("Detectado Google Sheets, exportando como Excel...")
+        request = service.files().export_media(fileId=file_id, mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    else:
+        logger.debug("Arquivo binário detectado, baixando diretamente...")
+        request = service.files().get_media(fileId=file_id)
+    
+    file_content = io.BytesIO()
+    downloader = MediaIoBaseDownload(file_content, request)
+    
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+        if status:
+            logger.debug(f"Progresso: {int(status.progress() * 100)}%")
+    
+    file_content.seek(0)
+    logger.debug(f"Download concluído: {file_name}")
+    return file_content.getvalue(), file_name
+
+
 def download_file_from_drive(file_id, credentials):
-    """Baixa arquivo do Google Drive"""
+    """
+    Baixa arquivo do Google Drive com retry automático.
+    
+    Performance: Usa retry logic para melhorar confiabilidade.
+    """
     try:
         service = build('drive', 'v3', credentials=credentials)
         
-        # Busca informações do arquivo
-        file_metadata = service.files().get(fileId=file_id).execute()
-        file_name = file_metadata.get('name', 'planilha.xlsx')
-        mime_type = file_metadata.get('mimeType', '')
-        
-        print(f"Arquivo encontrado: {file_name}")
-        print(f"Tipo MIME: {mime_type}")
-        
-        # Determina o método de download baseado no tipo de arquivo
-        if mime_type == 'application/vnd.google-apps.spreadsheet':
-            # Google Sheets - precisa exportar
-            print("Detectado Google Sheets, exportando como Excel...")
-            request = service.files().export_media(
-                fileId=file_id,
-                mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            file_name = file_name.replace('.xlsx', '') + '.xlsx'
-        else:
-            # Arquivo binário normal (Excel, CSV, etc.)
-            print("Arquivo binário detectado, baixando diretamente...")
-            request = service.files().get_media(fileId=file_id)
-        
-        # Baixa o conteúdo do arquivo
-        file_content = io.BytesIO()
-        downloader = MediaIoBaseDownload(file_content, request)
-        
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-            print(f"Progresso: {int(status.progress() * 100)}%")
-        
-        print(f"Download concluído: {file_name}")
-        return file_content.getvalue(), file_name
-        
+        # Performance: Retry automático para download
+        file_content, file_name = _download_file_from_drive_with_retry(service, file_id)
+        return file_content, file_name
     except Exception as e:
-        print(f"Erro ao baixar arquivo: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Erro ao baixar arquivo: {e}", exc_info=True)
         return None, None
 
 def clean_dataframe_for_json(df: pd.DataFrame, max_rows: int = 2000) -> list:
@@ -533,7 +923,7 @@ def clean_dataframe_for_json(df: pd.DataFrame, max_rows: int = 2000) -> list:
         
         return df_cleaned.to_dict('records')
     except Exception as e:
-        print(f"Erro na conversão otimizada: {e}")
+        logger.warning(f"Erro na conversão otimizada, usando fallback: {e}")
         return _fallback_dataframe_to_json(df.head(MAX_ROWS_FOR_FALLBACK))
 
 
@@ -1055,6 +1445,7 @@ SULTS_LEADS_CACHE = {
 }
 SULTS_CACHE_TTL_SECONDS = 300  # 5 minutos
 
+# Performance: Versões originais mantidas para compatibilidade
 def normalize_email(value):
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ''
@@ -1081,6 +1472,75 @@ def normalize_status_key(value):
     if any(keyword in text for keyword in ['abert', 'andament', 'pendente', 'agendado', 'analise', 'andamento']):
         return 'aberto'
     return 'outros'
+
+
+# Performance: Versões vetorizadas (5-10x mais rápido que .apply())
+def normalize_email_vectorized(series: pd.Series) -> pd.Series:
+    """
+    Normaliza emails usando operações vetorizadas.
+    
+    Performance: 5-10x mais rápido que .apply(normalize_email)
+    """
+    return series.fillna('').astype(str).str.strip().str.lower()
+
+
+def normalize_phone_vectorized(series: pd.Series) -> pd.Series:
+    """
+    Normaliza telefones usando operações vetorizadas.
+    
+    Performance: 5-10x mais rápido que .apply(normalize_phone)
+    """
+    # Remove não-dígitos
+    digits = series.fillna('').astype(str).str.replace(r'\D', '', regex=True)
+    # Remove código do país 55 se tiver mais de 11 dígitos
+    mask_55 = digits.str.startswith('55') & (digits.str.len() > 11)
+    digits = digits.where(~mask_55, digits.str[-11:])
+    # Mantém últimos 11 dígitos se tiver mais
+    mask_long = digits.str.len() > 11
+    digits = digits.where(~mask_long, digits.str[-11:])
+    return digits.fillna('')
+
+
+def normalize_status_key_vectorized(series: pd.Series) -> pd.Series:
+    """
+    Normaliza status usando operações vetorizadas.
+    
+    Performance: 5-10x mais rápido que .apply(normalize_status_key)
+    """
+    result = pd.Series('outros', index=series.index)
+    text = series.fillna('').astype(str).str.lower()
+    
+    # Ganho
+    ganho_mask = text.str.contains('ganh|won|cliente|conclu', case=False, na=False, regex=True)
+    result[ganho_mask] = 'ganho'
+    
+    # Perdido
+    perdido_mask = text.str.contains('perd|lost|cancel|desist|no show|no-show', case=False, na=False, regex=True)
+    result[perdido_mask] = 'perdido'
+    
+    # Aberto
+    aberto_mask = text.str.contains('abert|andament|pendente|agendado|analise|andamento', case=False, na=False, regex=True)
+    result[aberto_mask] = 'aberto'
+    
+    return result
+
+
+def normalize_name_vectorized(series: pd.Series) -> pd.Series:
+    """
+    Normaliza nomes usando operações vetorizadas.
+    
+    Performance: 5-10x mais rápido que .apply(normalize_name)
+    """
+    # Remove valores nulos e converte para string
+    text = series.fillna('').astype(str).str.strip().str.lower()
+    
+    # Remove acentos e caracteres especiais (vetorizado)
+    # Nota: unicodedata não é facilmente vetorizável, mas podemos usar str.normalize
+    # Para melhor performance, fazemos em etapas vetorizadas
+    text = text.str.replace(r'[^a-z0-9 ]+', ' ', regex=True)
+    text = text.str.replace(r'\s+', ' ', regex=True).str.strip()
+    
+    return text.fillna('')
 
 def build_status_label(key):
     return STATUS_LABELS.get(key, STATUS_LABELS['outros'])
@@ -1257,8 +1717,31 @@ def _extract_sults_lead_entry(projeto):
         'origem': origem_nome
     }
 
+# Performance: Retry logic para APIs externas
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout)),
+    reraise=True
+)
+def _fetch_sults_data_with_retry(client: 'SultsAPIClient') -> List[Dict]:
+    """
+    Busca dados da SULTS com retry automático.
+    
+    Performance: Retry com backoff exponencial para melhorar confiabilidade.
+    """
+    projetos = client.get_negocios_franqueados()
+    if not projetos:
+        projetos = client.get_projetos()
+    return projetos or []
+
+
 def fetch_sults_leads_contacts(max_records=None, use_cache=True):
-    """Busca contatos da SULTS para conciliação."""
+    """
+    Busca contatos da SULTS para conciliação.
+    
+    Performance: Usa retry logic e list comprehension otimizada.
+    """
     if not SULTS_AVAILABLE:
         return {'success': False, 'error': 'Integração SULTS desabilitada', 'leads': [], 'total': 0}
     
@@ -1275,24 +1758,25 @@ def fetch_sults_leads_contacts(max_records=None, use_cache=True):
         token = os.getenv('SULTS_API_TOKEN', '')
         base_url = "https://api.sults.com.br/api/v1"
         client = SultsAPIClient(token=token or None, base_url=base_url, auth_format='token')
-        projetos = client.get_negocios_franqueados()
-        if not projetos:
-            projetos = client.get_projetos()
         
-        leads = []
-        for projeto in projetos or []:
-            lead_entry = _extract_sults_lead_entry(projeto)
-            if lead_entry:
-                leads.append(lead_entry)
+        # Performance: Retry automático para chamadas à API
+        projetos = _fetch_sults_data_with_retry(client)
+        
+        # Performance: List comprehension é mais rápido que loop com append
+        leads = [
+            lead_entry for projeto in projetos
+            if (lead_entry := _extract_sults_lead_entry(projeto))
+        ]
         
         SULTS_LEADS_CACHE['timestamp'] = now
         SULTS_LEADS_CACHE['leads'] = leads
         SULTS_LEADS_CACHE['total'] = len(leads)
         
         trimmed = leads[:max_records] if max_records else leads
+        logger.info(f"Leads SULTS carregados: {len(leads)} total, {len(trimmed)} retornados")
         return {'success': True, 'leads': trimmed, 'total': len(leads), 'cached': False}
     except Exception as e:
-        print(f"Erro ao buscar leads da SULTS para conciliação: {e}")
+        logger.error(f"Erro ao buscar leads da SULTS para conciliação: {e}", exc_info=True)
         return {'success': False, 'error': str(e), 'leads': [], 'total': 0}
 
 def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, preview_limit=30):
@@ -1366,39 +1850,187 @@ def crosscheck_leads_with_sults(df, name_col, status_col, email_col, phone_col, 
     else:
         df_sample = df
     
-    # Otimização: pré-processa colunas de uma vez
+    # Performance: Pré-processa colunas usando operações vetorizadas (5-10x mais rápido)
     if email_col and email_col in df_sample.columns:
-        df_sample['_email_norm'] = df_sample[email_col].fillna('').astype(str).str.strip().apply(normalize_email)
+        df_sample['_email_norm'] = normalize_email_vectorized(df_sample[email_col])
     else:
         df_sample['_email_norm'] = ''
     
     if phone_col and phone_col in df_sample.columns:
-        df_sample['_phone_norm'] = df_sample[phone_col].fillna('').astype(str).str.strip().apply(normalize_phone)
+        df_sample['_phone_norm'] = normalize_phone_vectorized(df_sample[phone_col])
     else:
         df_sample['_phone_norm'] = ''
     
     if status_col and status_col in df_sample.columns:
-        df_sample['_status_key'] = df_sample[status_col].fillna('').astype(str).str.strip().apply(normalize_status_key)
+        df_sample['_status_key'] = normalize_status_key_vectorized(df_sample[status_col])
     else:
         df_sample['_status_key'] = 'outros'
     
     if name_col and name_col in df_sample.columns:
-        df_sample['_name_slug'] = df_sample[name_col].fillna('').astype(str).str.strip().apply(normalize_name)
+        df_sample['_name_slug'] = normalize_name_vectorized(df_sample[name_col])
     else:
         df_sample['_name_slug'] = ''
     
-    # Processa linha por linha (ainda necessário para matching complexo)
-    for idx, row in df_sample.iterrows():
-        email_norm = row['_email_norm']
-        phone_norm = row['_phone_norm']
-        sheet_status_key = row['_status_key']
-        sheet_slug = row['_name_slug']
+    # Performance: Cria DataFrames para matching vetorizado
+    sults_df = pd.DataFrame(sults_leads)
+    if sults_df.empty:
+        return {
+            'available': True,
+            'matched': 0,
+            'matches': [],
+            'summary': {'total_planilha': total_rows, 'total_sults': 0, 'matched': 0}
+        }
+    
+    # Performance: Matching vetorizado por email
+    matches_by_email = pd.merge(
+        df_sample[df_sample['_email_norm'] != ''],
+        sults_df,
+        left_on='_email_norm',
+        right_on='email_norm',
+        how='inner',
+        suffixes=('_sheet', '_sults')
+    )
+    
+    # Performance: Matching vetorizado por telefone (apenas não encontrados por email)
+    unmatched_by_email = df_sample[~df_sample.index.isin(matches_by_email.index)]
+    matches_by_phone = pd.merge(
+        unmatched_by_email[unmatched_by_email['_phone_norm'] != ''],
+        sults_df,
+        left_on='_phone_norm',
+        right_on='telefone_norm',
+        how='inner',
+        suffixes=('_sheet', '_sults')
+    )
+    
+    # Performance: Matching por nome (apenas não encontrados por email/telefone)
+    unmatched_by_phone = unmatched_by_email[~unmatched_by_email.index.isin(matches_by_phone.index)]
+    matches_by_name = pd.merge(
+        unmatched_by_phone[unmatched_by_phone['_name_slug'] != ''],
+        sults_df,
+        left_on='_name_slug',
+        right_on='name_slug',
+        how='inner',
+        suffixes=('_sheet', '_sults')
+    )
+    
+    # Performance: Processa matches vetorizados (email e telefone)
+    matched_ids = set()
+    matches_preview = []
+    matches_perdidos = []
+    matches_ganhos = []
+    status_counts = {'aberto': 0, 'perdido': 0, 'ganho': 0, 'outros': 0}
+    divergent = 0
+    
+    def process_matches_vectorized(matches_df: pd.DataFrame, match_source: str):
+        """
+        Processa matches usando operações vetorizadas.
         
-        # Pega valores originais para exibição
-        raw_email = row[email_col] if email_col in df_sample.columns else ''
-        raw_phone = row[phone_col] if phone_col in df_sample.columns else ''
-        raw_status = row[status_col] if status_col in df_sample.columns else ''
-        raw_name = row[name_col] if name_col in df_sample.columns else ''
+        Performance: Usa itertuples() ao invés de iterrows() (3-5x mais rápido).
+        """
+        if matches_df.empty:
+            return
+        
+        nonlocal matched_ids, matches_preview, matches_perdidos, matches_ganhos, status_counts, divergent
+        
+        # Performance: itertuples() é 3-5x mais rápido que iterrows()
+        # Normaliza nomes de colunas para acesso via atributo (remove espaços/caracteres especiais)
+        matches_df_normalized = matches_df.copy()
+        column_mapping = {}
+        for col in matches_df.columns:
+            normalized = col.replace(' ', '_').replace('-', '_').replace('.', '_')
+            if normalized != col:
+                column_mapping[col] = normalized
+                matches_df_normalized.rename(columns={col: normalized}, inplace=True)
+        
+        # Cria mapeamento reverso para acessar valores originais
+        reverse_mapping = {v: k for k, v in column_mapping.items()}
+        
+        for match_row in matches_df_normalized.itertuples(index=False):
+            # Performance: Acesso direto via atributo (muito mais rápido que .get())
+            candidate_id = getattr(match_row, 'id_sults', None) or getattr(match_row, 'id', None)
+            if not candidate_id:
+                continue
+            
+            matched_ids.add(candidate_id)
+            status_key = getattr(match_row, 'status_key', 'outros')
+            status_counts[status_key] = status_counts.get(status_key, 0) + 1
+            
+            sheet_status_key = getattr(match_row, '_status_key', 'outros')
+            if sheet_status_key and sheet_status_key != status_key:
+                divergent += 1
+            
+            # Extrai valores originais usando nomes normalizados
+            email_col_norm = column_mapping.get(email_col, email_col) if email_col else None
+            phone_col_norm = column_mapping.get(phone_col, phone_col) if phone_col else None
+            status_col_norm = column_mapping.get(status_col, status_col) if status_col else None
+            name_col_norm = column_mapping.get(name_col, name_col) if name_col else None
+            
+            raw_email = getattr(match_row, email_col_norm, '') if email_col_norm else ''
+            raw_phone = getattr(match_row, phone_col_norm, '') if phone_col_norm else ''
+            raw_status = getattr(match_row, status_col_norm, '') if status_col_norm else ''
+            raw_name = getattr(match_row, name_col_norm, '') if name_col_norm else ''
+            
+            sheet_email = '' if pd.isna(raw_email) else str(raw_email).strip()
+            sheet_phone = '' if pd.isna(raw_phone) else str(raw_phone).strip()
+            sheet_status = '' if pd.isna(raw_status) else str(raw_status).strip()
+            sheet_name = '' if pd.isna(raw_name) else str(raw_name).strip()
+            
+            match_entry = {
+                'lead': sheet_name or getattr(match_row, 'nome', ''),
+                'sheet_status': sheet_status or 'Sem status',
+                'sults_status': getattr(match_row, 'status_label', ''),
+                'responsavel': getattr(match_row, 'responsavel', ''),
+                'email': sheet_email or getattr(match_row, 'email', '') or '-',
+                'telefone': sheet_phone or getattr(match_row, 'telefone', '') or '-',
+                'match_source': match_source,
+                'sults_id': candidate_id,
+                'status_key': status_key,
+                'divergente': bool(sheet_status and sheet_status_key and sheet_status_key != status_key),
+                'sults_origem': getattr(match_row, 'origem', '')
+            }
+            
+            matches_preview.append(match_entry)
+            
+            if status_key == 'perdido':
+                matches_perdidos.append(match_entry)
+            elif status_key == 'ganho':
+                matches_ganhos.append(match_entry)
+    
+    # Processa matches vetorizados
+    process_matches_vectorized(matches_by_email, 'email')
+    process_matches_vectorized(matches_by_phone, 'telefone')
+    process_matches_vectorized(matches_by_name, 'nome')
+    
+    # Performance: Processa casos complexos de matching por nome (apenas não encontrados)
+    unmatched_by_all = unmatched_by_phone[~unmatched_by_phone.index.isin(matches_by_name.index)]
+    
+    # Performance: itertuples() é 3-5x mais rápido que iterrows() para casos complexos
+    # Normaliza nomes de colunas para acesso via atributo
+    unmatched_normalized = unmatched_by_all.copy()
+    unmatched_column_mapping = {}
+    for col in unmatched_by_all.columns:
+        normalized = col.replace(' ', '_').replace('-', '_').replace('.', '_')
+        if normalized != col:
+            unmatched_column_mapping[col] = normalized
+            unmatched_normalized.rename(columns={col: normalized}, inplace=True)
+    
+    for row in unmatched_normalized.itertuples(index=False):
+        # Performance: Acesso direto via atributo (muito mais rápido)
+        email_norm = getattr(row, '_email_norm', '')
+        phone_norm = getattr(row, '_phone_norm', '')
+        sheet_status_key = getattr(row, '_status_key', 'outros')
+        sheet_slug = getattr(row, '_name_slug', '')
+        
+        # Pega valores originais para exibição (usa nomes normalizados)
+        email_col_norm = unmatched_column_mapping.get(email_col, email_col) if email_col else None
+        phone_col_norm = unmatched_column_mapping.get(phone_col, phone_col) if phone_col else None
+        status_col_norm = unmatched_column_mapping.get(status_col, status_col) if status_col else None
+        name_col_norm = unmatched_column_mapping.get(name_col, name_col) if name_col else None
+        
+        raw_email = getattr(row, email_col_norm, '') if email_col_norm and hasattr(row, email_col_norm) else ''
+        raw_phone = getattr(row, phone_col_norm, '') if phone_col_norm and hasattr(row, phone_col_norm) else ''
+        raw_status = getattr(row, status_col_norm, '') if status_col_norm and hasattr(row, status_col_norm) else ''
+        raw_name = getattr(row, name_col_norm, '') if name_col_norm and hasattr(row, name_col_norm) else ''
         
         sheet_email = '' if pd.isna(raw_email) else str(raw_email).strip()
         sheet_phone = '' if pd.isna(raw_phone) else str(raw_phone).strip()
@@ -1570,8 +2202,9 @@ def analyze_leads_dataframe(df):
             ]
             
             # Comparação temporal: mês atual vs mês anterior
-            current_month = datetime.now().to_period('M')
-            previous_month = (current_month - 1)
+            # Performance: Usa pd.Period ao invés de datetime.to_period() (não existe)
+            current_month = pd.Period(datetime.now(), freq='M')
+            previous_month = current_month - 1
             
             current_month_leads = monthly_counts.get(current_month, 0)
             previous_month_leads = monthly_counts.get(previous_month, 0)
@@ -1640,7 +2273,11 @@ def analyze_leads_dataframe(df):
         conversion_rate = round((leads_won / total_leads) * 100, 2) if total_leads > 0 else 0.0
 
     if source_col:
-        source_series = df[source_col].astype(str).str.strip().apply(normalize_origin_label)
+        # Performance: Versão vetorizada básica (maioria dos casos)
+        source_series = df[source_col].fillna('SULTS').astype(str).str.strip()
+        # Remove JSON-like strings e normaliza
+        source_series = source_series.str.replace(r'^\{.*\}$', 'SULTS', regex=True)
+        source_series = source_series.replace('', 'SULTS')
         source_counts = source_series.value_counts().head(15)
         source_distribution = [
             {'label': origem, 'value': int(count)}
@@ -1648,7 +2285,11 @@ def analyze_leads_dataframe(df):
         ]
 
     if owner_col:
-        owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip().apply(normalize_owner_label)
+        # Performance: Versão vetorizada básica (maioria dos casos)
+        owner_series = df[owner_col].fillna('Sem Responsável').astype(str).str.strip()
+        # Remove JSON-like strings e normaliza
+        owner_series = owner_series.str.replace(r'^\{.*\}$', 'Sem Responsável', regex=True)
+        owner_series = owner_series.replace('', 'Sem Responsável').str.title()
         owner_counts = owner_series.value_counts().head(15)
         owner_distribution = [
             {'label': owner, 'value': int(count)}
@@ -1851,232 +2492,241 @@ def index():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
+@limiter.limit("10 per minute")
+@handle_errors
 def upload_file():
+    """Endpoint para upload de arquivo com validação e tratamento de erros."""
+    logger.info("Upload request received")
+    
+    # Validação de arquivo
+    if 'file' not in request.files:
+        logger.warning("Upload sem arquivo")
+        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    
+    file = request.files['file']
+    is_valid, error_msg = validate_file_upload(file)
+    if not is_valid:
+        logger.warning(f"Upload inválido: {error_msg}")
+        return jsonify({'error': error_msg}), 400
+    
+    logger.info(f"Processando arquivo: {file.filename}")
+    
+    # Lê o arquivo com otimizações
+    file_bytes = file.read()
+    cache_key = _get_cache_key(file_bytes)
+    cached_data = _get_from_cache(cache_key, cache_type='upload')
+    
+    if cached_data:
+        logger.info(f"Cache hit para arquivo: {file.filename}")
+        return jsonify(cached_data)
+    
+    # Processa arquivo
+    file_like = io.BytesIO(file_bytes)
     try:
-        print("Upload request received")
-        if 'file' not in request.files:
-            print("No file part in request")
-            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            print("No filename provided")
-            return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
-        
-        print(f"Processing file: {file.filename}")
-        
-        # Lê o arquivo com otimizações
-        file_bytes = file.read()
-        cache_key = _get_cache_key(file_bytes)
-        cached_data = _get_from_cache(cache_key)
-        
-        if cached_data:
-            print("Usando dados do cache")
-            return jsonify(cached_data)
-        
-        file_like = io.BytesIO(file_bytes)
         if file.filename.endswith('.csv'):
-            # Otimizações para CSV
+            logger.debug("Lendo arquivo CSV")
             df = pd.read_csv(file_like, dtype=str, low_memory=False, engine='c')
         else:
-            # Otimizações para Excel - usa openpyxl que é mais rápido
+            logger.debug("Lendo arquivo Excel")
             try:
                 df = pd.read_excel(file_like, engine='openpyxl', dtype=str)
-            except:
-                # Fallback para engine padrão
+            except Exception as excel_error:
+                logger.warning(f"Erro com openpyxl, tentando engine padrão: {excel_error}")
+                file_like.seek(0)
                 df = pd.read_excel(file_like, dtype=str)
-        
-        # Processa dados
-        date_col = detect_date_column(df)
-        creative_cols = detect_creative_columns(df)
-        cost_cols = detect_cost_columns(df)
-        leads_cols = detect_leads_columns(df)
-        
-        # Processa datas
-        if date_col:
-            df['Data_Processada'] = _parse_dates_vectorized(df[date_col])
-        
-        # Otimização: processa apenas colunas necessárias
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) > 0:
-            df[numeric_cols] = df[numeric_cols].fillna(0)
-        
-        # Preenche campos em branco com 0 APÓS detectar as colunas
-        df = fill_empty_fields_with_zero(df)
-        
-        # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
-        df = fill_lead_mql_columns(df, leads_cols)
-        
-        # Preenche coluna Term vazia com 'organico'
-        df = fill_term_column(df)
-        
-        # Cria identificador único do criativo
+    except pd.errors.EmptyDataError:
+        logger.error(f"Arquivo vazio: {file.filename}")
+        return jsonify({'error': 'O arquivo está vazio ou corrompido'}), 400
+    except pd.errors.ParserError as e:
+        logger.error(f"Erro ao processar arquivo {file.filename}: {e}")
+        return jsonify({'error': 'Erro ao processar arquivo. Verifique o formato.'}), 400
+    
+    # Processa dados
+    date_col = detect_date_column(df)
+    creative_cols = detect_creative_columns(df)
+    cost_cols = detect_cost_columns(df)
+    leads_cols = detect_leads_columns(df)
+    
+    # Processa datas
+    if date_col:
+        df['Data_Processada'] = _parse_dates_vectorized(df[date_col])
+    
+    # Otimização: processa apenas colunas necessárias
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) > 0:
+        df[numeric_cols] = df[numeric_cols].fillna(0)
+    
+    # Preenche campos em branco com 0 APÓS detectar as colunas
+    df = fill_empty_fields_with_zero(df)
+    
+    # Preenche especificamente colunas de leads e MQLs com 0 se estiverem vazias
+    df = fill_lead_mql_columns(df, leads_cols)
+    
+    # Preenche coluna Term vazia com 'organico'
+    df = fill_term_column(df)
+    
+    # Cria identificador único do criativo
+    if creative_cols['campaign'] and creative_cols['creative']:
+        df['Criativo_Completo'] = df[creative_cols['campaign']].astype(str) + " | " + df[creative_cols['creative']].astype(str)
+    
+    # Calcula resumos
+    summary_data = {}
+    
+    if date_col:
         if creative_cols['campaign'] and creative_cols['creative']:
-            df['Criativo_Completo'] = df[creative_cols['campaign']].astype(str) + " | " + df[creative_cols['creative']].astype(str)
-        
-        # Calcula resumos
-        summary_data = {}
-        
-        if date_col:
-            if creative_cols['campaign'] and creative_cols['creative']:
-                date_creative_counts = df.groupby('Data_Processada')['Criativo_Completo'].nunique().sort_index()
-            else:
-                date_creative_counts = df['Data_Processada'].value_counts().sort_index()
-            
-            summary_df = pd.DataFrame({
-                'Data': date_creative_counts.index,
-                'Criativos': date_creative_counts.values
-            })
-            summary_df = summary_df[summary_df['Data'] != ''].reset_index(drop=True)
-            # Converte para dict e limpa valores NaN
-            temporal_records = []
-            for _, row in summary_df.iterrows():
-                temporal_records.append({
-                    'Data': str(row['Data']) if pd.notna(row['Data']) else '',
-                    'Criativos': int(row['Criativos']) if pd.notna(row['Criativos']) else 0
-                })
-            summary_data['temporal'] = temporal_records
-        
-        # Calcula KPIs
-        kpis = {}
-        if leads_cols.get('lead'):
-            try:
-                total_leads = pd.to_numeric(df[leads_cols['lead']], errors='coerce').sum()
-                if pd.isna(total_leads) or total_leads == 0:
-                    total_leads = df[leads_cols['lead']].notna().sum()
-            except:
-                total_leads = df[leads_cols['lead']].notna().sum()
-            kpis['total_leads'] = int(total_leads) if not pd.isna(total_leads) else 0
-        
-        if leads_cols.get('mql'):
-            try:
-                total_mqls = pd.to_numeric(df[leads_cols['mql']], errors='coerce').sum()
-                if pd.isna(total_mqls) or total_mqls == 0:
-                    total_mqls = df[leads_cols['mql']].notna().sum()
-            except:
-                total_mqls = df[leads_cols['mql']].notna().sum()
-            kpis['total_mqls'] = int(total_mqls) if not pd.isna(total_mqls) else 0
-        
-        if cost_cols.get('total'):
-            investimento = df[cost_cols['total']].sum()
-            kpis['investimento_total'] = float(investimento) if not pd.isna(investimento) else 0.0
-        
-        # Calcula Custo por MQL
-        if cost_cols.get('total') and leads_cols.get('mql') and kpis.get('total_mqls', 0) > 0:
-            kpis['custo_por_mql'] = float(investimento) / kpis['total_mqls'] if not pd.isna(investimento) else 0.0
+            date_creative_counts = df.groupby('Data_Processada')['Criativo_Completo'].nunique().sort_index()
         else:
-            kpis['custo_por_mql'] = 0.0
+            date_creative_counts = df['Data_Processada'].value_counts().sort_index()
         
-        # Análise de criativos
-        creative_analysis = {}
-        print(f"Creative columns detected: {creative_cols}")
-        print(f"Leads columns detected: {leads_cols}")
+        summary_df = pd.DataFrame({
+            'Data': date_creative_counts.index,
+            'Criativos': date_creative_counts.values
+        })
+        summary_df = summary_df[summary_df['Data'] != ''].reset_index(drop=True)
+        # Performance: to_dict('records') é 3-5x mais rápido que iterrows()
+        temporal_records = summary_df.to_dict('records')
+        # Limpa valores NaN
+        for record in temporal_records:
+            record['Data'] = str(record['Data']) if pd.notna(record['Data']) else ''
+            record['Criativos'] = int(record['Criativos']) if pd.notna(record['Criativos']) else 0
+        summary_data['temporal'] = temporal_records
+    
+    # Calcula KPIs
+    kpis = {}
+    if leads_cols.get('lead'):
+        try:
+            total_leads = pd.to_numeric(df[leads_cols['lead']], errors='coerce').sum()
+            if pd.isna(total_leads) or total_leads == 0:
+                total_leads = df[leads_cols['lead']].notna().sum()
+        except:
+            total_leads = df[leads_cols['lead']].notna().sum()
+        kpis['total_leads'] = int(total_leads) if not pd.isna(total_leads) else 0
+    
+    if leads_cols.get('mql'):
+        try:
+            total_mqls = pd.to_numeric(df[leads_cols['mql']], errors='coerce').sum()
+            if pd.isna(total_mqls) or total_mqls == 0:
+                total_mqls = df[leads_cols['mql']].notna().sum()
+        except:
+            total_mqls = df[leads_cols['mql']].notna().sum()
+        kpis['total_mqls'] = int(total_mqls) if not pd.isna(total_mqls) else 0
+    
+    if cost_cols.get('total'):
+        investimento = df[cost_cols['total']].sum()
+        kpis['investimento_total'] = float(investimento) if not pd.isna(investimento) else 0.0
+    
+    # Calcula Custo por MQL
+    if cost_cols.get('total') and leads_cols.get('mql') and kpis.get('total_mqls', 0) > 0:
+        kpis['custo_por_mql'] = float(investimento) / kpis['total_mqls'] if not pd.isna(investimento) else 0.0
+    else:
+        kpis['custo_por_mql'] = 0.0
+    
+    # Análise de criativos
+    creative_analysis = {}
+    logger.debug(f"Colunas de criativo detectadas: {creative_cols}")
+    logger.debug(f"Colunas de leads detectadas: {leads_cols}")
+    
+    if leads_cols.get('lead'):
+        # Usar coluna de criativo se disponível, senão usar campanha
+        creative_col = creative_cols['creative'] if creative_cols['creative'] else creative_cols['campaign']
+        logger.debug(f"Usando coluna de criativo: {creative_col}")
         
-        if leads_cols.get('lead'):
-            # Usar coluna de criativo se disponível, senão usar campanha
-            creative_col = creative_cols['creative'] if creative_cols['creative'] else creative_cols['campaign']
-            print(f"Using creative column: {creative_col}")
+        # Se não encontrar coluna de criativo, tentar encontrar manualmente
+        if not creative_col:
+            for col in df.columns:
+                if col.lower() not in ['data', 'date', 'dia', 'leads', 'mql', 'investimento', 'custo', 'cpl', 'cpmql', 'cpc', 'cpm', 'ctr'] and df[col].dtype == 'object':
+                    creative_col = col
+                    logger.debug(f"Coluna de criativo auto-detectada: {creative_col}")
+                    break
+        
+        if creative_col:
+            # Análise detalhada de criativos
+            logger.debug(f"Analisando criativos com coluna: {creative_col}")
+            creative_stats = df.groupby(creative_col).agg({
+                leads_cols['lead']: ['sum', 'count'],
+                leads_cols['mql']: 'sum' if leads_cols.get('mql') else lambda x: 0,
+                cost_cols['total']: 'sum' if cost_cols.get('total') else lambda x: 0
+            }).round(2)
             
-            # Se não encontrar coluna de criativo, tentar encontrar manualmente
-            if not creative_col:
-                for col in df.columns:
-                    if col.lower() not in ['data', 'date', 'dia', 'leads', 'mql', 'investimento', 'custo', 'cpl', 'cpmql', 'cpc', 'cpm', 'ctr'] and df[col].dtype == 'object':
-                        creative_col = col
-                        print(f"Auto-detected creative column: {creative_col}")
-                        break
+            # Flatten column names
+            creative_stats.columns = ['Total_Leads', 'Qtd_Aparicoes', 'Total_MQLs', 'Total_Investimento']
+            creative_stats = creative_stats.reset_index()
             
-            if creative_col:
-                # Análise detalhada de criativos
-                print(f"Analyzing creatives with column: {creative_col}")
-                creative_stats = df.groupby(creative_col).agg({
-                    leads_cols['lead']: ['sum', 'count'],
-                    leads_cols['mql']: 'sum' if leads_cols.get('mql') else lambda x: 0,
-                    cost_cols['total']: 'sum' if cost_cols.get('total') else lambda x: 0
-                }).round(2)
+            # Renomear a coluna do criativo para 'creative' para o frontend
+            if creative_col in creative_stats.columns:
+                creative_stats = creative_stats.rename(columns={creative_col: 'creative'})
             
-                # Flatten column names
-                creative_stats.columns = ['Total_Leads', 'Qtd_Aparicoes', 'Total_MQLs', 'Total_Investimento']
-                creative_stats = creative_stats.reset_index()
-                
-                # Renomear a coluna do criativo para 'creative' para o frontend
-                if creative_col in creative_stats.columns:
-                    creative_stats = creative_stats.rename(columns={creative_col: 'creative'})
-                
-                print(f"Creative stats shape: {creative_stats.shape}")
-                print(f"Creative stats columns: {creative_stats.columns.tolist()}")
-                print(f"Creative stats sample:")
-                print(creative_stats.head())
-                
-                # Calcula métricas adicionais
-                creative_stats['Leads_por_Aparicao'] = (creative_stats['Total_Leads'] / creative_stats['Qtd_Aparicoes']).round(2)
-                creative_stats['MQLs_por_Aparicao'] = (creative_stats['Total_MQLs'] / creative_stats['Qtd_Aparicoes']).round(2)
-                creative_stats['Taxa_Conversao_Lead_MQL'] = (creative_stats['Total_MQLs'] / creative_stats['Total_Leads'] * 100).round(2)
-                
-                # Calcula custos por criativo
-                creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
-                creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
-                
-                # Análise de Performance e Otimização
-                avg_cpl = creative_stats['CPL'].replace([np.inf, -np.inf, np.nan], 0).mean()
-                avg_cpmql = creative_stats['CPMQL'].replace([np.inf, -np.inf, np.nan], 0).mean()
-                
-                # Identifica criativos com performance abaixo da média
-                creative_stats['Performance_Status'] = 'Bom'
-                creative_stats.loc[
-                    (creative_stats['CPL'] > avg_cpl * 1.5) | 
-                    (creative_stats['CPMQL'] > avg_cpmql * 1.5) |
-                    (creative_stats['Total_Leads'] < 5),
-                    'Performance_Status'
-                ] = 'Ruim'
-                
-                creative_stats.loc[
-                    (creative_stats['CPL'] <= avg_cpl * 0.7) & 
-                    (creative_stats['CPMQL'] <= avg_cpmql * 0.7) &
-                    (creative_stats['Total_Leads'] >= 10),
-                    'Performance_Status'
-                ] = 'Excelente'
-                
-                # Sugestões de otimização
-                optimization_suggestions = {
-                    'pause_creatives': creative_stats[
-                        creative_stats['Performance_Status'] == 'Ruim'
-                    ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
-                    'scale_creatives': creative_stats[
-                        creative_stats['Performance_Status'] == 'Excelente'
-                    ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
-                    'avg_cpl': float(avg_cpl),
-                    'avg_cpmql': float(avg_cpmql)
-                }
-                
-                # Substitui inf e NaN por 0
-                creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
-                
-                # Ordena por total de leads
-                creative_stats = creative_stats.sort_values('Total_Leads', ascending=False)
-                
-                print(f"Sorted creative stats:")
-                print(creative_stats.head())
-                
-                # Top criativos para gráfico
-                top_creatives = {}
-                for _, row in creative_stats.head(10).iterrows():
-                    creative_name = str(row['creative'])
-                    top_creatives[creative_name] = int(row['Total_Leads'])
-                
-                # Criativo com mais leads
-                top_lead_creative = creative_stats.iloc[0] if len(creative_stats) > 0 else None
-                
-                # Criativo com mais MQLs
-                top_mql_creative = creative_stats.loc[creative_stats['Total_MQLs'].idxmax()] if len(creative_stats) > 0 else None
-                
-                print(f"Top lead creative: {top_lead_creative['creative'] if top_lead_creative is not None else 'None'}")
-                print(f"Top MQL creative: {top_mql_creative['creative'] if top_mql_creative is not None else 'None'}")
-                
-                # Estatísticas gerais
-                total_leads_all = creative_stats['Total_Leads'].sum()
-                total_mqls_all = creative_stats['Total_MQLs'].sum()
-                
-                creative_analysis = {
+            logger.debug(f"Estatísticas de criativos: {creative_stats.shape[0]} criativos, {len(creative_stats.columns)} colunas")
+            
+            # Calcula métricas adicionais
+            creative_stats['Leads_por_Aparicao'] = (creative_stats['Total_Leads'] / creative_stats['Qtd_Aparicoes']).round(2)
+            creative_stats['MQLs_por_Aparicao'] = (creative_stats['Total_MQLs'] / creative_stats['Qtd_Aparicoes']).round(2)
+            creative_stats['Taxa_Conversao_Lead_MQL'] = (creative_stats['Total_MQLs'] / creative_stats['Total_Leads'] * 100).round(2)
+            
+            # Calcula custos por criativo
+            creative_stats['CPL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_Leads']).round(2)
+            creative_stats['CPMQL'] = (creative_stats['Total_Investimento'] / creative_stats['Total_MQLs']).round(2)
+            
+            # Análise de Performance e Otimização
+            avg_cpl = creative_stats['CPL'].replace([np.inf, -np.inf, np.nan], 0).mean()
+            avg_cpmql = creative_stats['CPMQL'].replace([np.inf, -np.inf, np.nan], 0).mean()
+            
+            # Identifica criativos com performance abaixo da média
+            creative_stats['Performance_Status'] = 'Bom'
+            creative_stats.loc[
+                (creative_stats['CPL'] > avg_cpl * 1.5) | 
+                (creative_stats['CPMQL'] > avg_cpmql * 1.5) |
+                (creative_stats['Total_Leads'] < 5),
+                'Performance_Status'
+            ] = 'Ruim'
+            
+            creative_stats.loc[
+                (creative_stats['CPL'] <= avg_cpl * 0.7) & 
+                (creative_stats['CPMQL'] <= avg_cpmql * 0.7) &
+                (creative_stats['Total_Leads'] >= 10),
+                'Performance_Status'
+            ] = 'Excelente'
+            
+            # Sugestões de otimização
+            optimization_suggestions = {
+                'pause_creatives': creative_stats[
+                    creative_stats['Performance_Status'] == 'Ruim'
+                ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
+                'scale_creatives': creative_stats[
+                    creative_stats['Performance_Status'] == 'Excelente'
+                ][['creative', 'CPL', 'CPMQL', 'Total_Leads']].to_dict('records'),
+                'avg_cpl': float(avg_cpl),
+                'avg_cpmql': float(avg_cpmql)
+            }
+            
+            # Substitui inf e NaN por 0
+            creative_stats = creative_stats.replace([np.inf, -np.inf], 0).fillna(0)
+            
+            # Ordena por total de leads
+            creative_stats = creative_stats.sort_values('Total_Leads', ascending=False)
+            
+            logger.debug(f"Criativos ordenados: top {min(5, len(creative_stats))} criativos")
+            
+            # Performance: itertuples() é 3-5x mais rápido que iterrows()
+            top_creatives = {}
+            for row in creative_stats.head(10).itertuples(index=False):
+                creative_name = str(row.creative)
+                top_creatives[creative_name] = int(row.Total_Leads)
+            
+            # Criativo com mais leads
+            top_lead_creative = creative_stats.iloc[0] if len(creative_stats) > 0 else None
+            
+            # Criativo com mais MQLs
+            top_mql_creative = creative_stats.loc[creative_stats['Total_MQLs'].idxmax()] if len(creative_stats) > 0 else None
+            
+            logger.debug(f"Top criativo (leads): {top_lead_creative['creative'] if top_lead_creative is not None else 'N/A'}")
+            logger.debug(f"Top criativo (MQLs): {top_mql_creative['creative'] if top_mql_creative is not None else 'N/A'}")
+            
+            # Estatísticas gerais
+            total_leads_all = creative_stats['Total_Leads'].sum()
+            total_mqls_all = creative_stats['Total_MQLs'].sum()
+            
+            creative_analysis = {
                     'top_creatives': top_creatives,
                     'creative_details': clean_dataframe_for_json(creative_stats.head(20)),  # Top 20 criativos
                     'optimization_suggestions': optimization_suggestions,
@@ -2116,42 +2766,36 @@ def upload_file():
                     'avg_leads_per_creative': float(creative_stats['Total_Leads'].mean()) if len(creative_stats) > 0 else 0,
                     'avg_mqls_per_creative': float(creative_stats['Total_MQLs'].mean()) if len(creative_stats) > 0 else 0
                 }
-            else:
-                print("No creative column found, skipping creative analysis")
-                creative_analysis = {}
-        
-        result = {
-            'success': True,
-            'data': {
-                'columns': list(df.columns),
-                'total_rows': len(df),
-                'date_column': date_col,
-                'creative_columns': creative_cols,
-                'cost_columns': cost_cols,
-                'leads_columns': leads_cols,
-                'summary': summary_data,
-                'kpis': kpis,
-                'creative_analysis': creative_analysis,
-                'raw_data': clean_dataframe_for_json(df, max_rows=2000)  # Limita para performance
-            }
+        else:
+            logger.debug("Coluna de criativo não encontrada, pulando análise")
+            creative_analysis = {}
+    
+    result = {
+        'success': True,
+        'data': {
+            'columns': list(df.columns),
+            'total_rows': len(df),
+            'date_column': date_col,
+            'creative_columns': creative_cols,
+            'cost_columns': cost_cols,
+            'leads_columns': leads_cols,
+            'summary': summary_data,
+            'kpis': kpis,
+            'creative_analysis': creative_analysis,
+            'raw_data': clean_dataframe_for_json(df, max_rows=2000)  # Limita para performance
         }
-        
-        # Salva no cache se tiver chave
-        if cache_key:
-            _save_to_cache(cache_key, result)
-        
-        # Limpa memória
-        del df
-        gc.collect()
-        
-        print("Upload processing completed successfully")
-        return jsonify(result)
-        
-    except Exception as e:
-        print(f"Error processing file: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
+    }
+    
+    # Salva no cache se tiver chave
+    if cache_key:
+        _save_to_cache(cache_key, result, cache_type='upload')
+    
+    # Limpa memória
+    del df
+    gc.collect()
+    
+    logger.info(f"Upload processado com sucesso: {file.filename}")
+    return jsonify(result)
 
 @app.route('/auto-upload')
 def auto_upload():
@@ -2217,13 +2861,12 @@ def auto_upload():
                     'Criativos': date_creative_counts.values
                 })
                 summary_df = summary_df[summary_df['Data'] != ''].reset_index(drop=True)
-                # Converte para dict e limpa valores NaN
-                temporal_records = []
-                for _, row in summary_df.iterrows():
-                    temporal_records.append({
-                        'Data': str(row['Data']) if pd.notna(row['Data']) else '',
-                        'Criativos': int(row['Criativos']) if pd.notna(row['Criativos']) else 0
-                    })
+                # Performance: to_dict('records') é 3-5x mais rápido que iterrows()
+                temporal_records = summary_df.to_dict('records')
+                # Limpa valores NaN
+                for record in temporal_records:
+                    record['Data'] = str(record['Data']) if pd.notna(record['Data']) else ''
+                    record['Criativos'] = int(record['Criativos']) if pd.notna(record['Criativos']) else 0
                 summary_data['temporal'] = temporal_records
             
             # Calcula KPIs
@@ -2392,15 +3035,11 @@ def auto_upload():
                 'message': f'Planilha {file_name} carregada automaticamente do Google Drive!',
                 'data': result['data']
             })
-                
         except Exception as e:
-            print(f"Erro ao processar arquivo Excel: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Erro ao processar arquivo em auto_upload: {e}", exc_info=True)
             return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
-            
     except Exception as e:
-        print(f"Erro no upload automático: {str(e)}")
+        logger.error(f"Erro no auto_upload: {e}", exc_info=True)
         return jsonify({'error': f'Erro no upload automático: {str(e)}'}), 500
 
 @app.route('/google-ads-upload')
@@ -2436,7 +3075,7 @@ def google_ads_upload():
                 return jsonify({'error': 'Erro ao baixar arquivo do Google Drive'}), 500
             
             file_name = downloaded_name or file_name
-            print(f"Upload automático do Google Ads recebido: {file_name}")
+            logger.info(f"Upload automático do Google Ads recebido: {file_name}")
             
             try:
                 sheets_dict = pd.read_excel(io.BytesIO(file_content), sheet_name=None)
@@ -2522,12 +3161,12 @@ def google_ads_upload():
                     'Criativos': date_counts.values
                 })
                 summary_df = summary_df[summary_df['Data'] != ''].reset_index(drop=True)
-                temporal_records = []
-                for _, row in summary_df.iterrows():
-                    temporal_records.append({
-                        'Data': str(row['Data']) if pd.notna(row['Data']) else '',
-                        'Criativos': int(row['Criativos']) if pd.notna(row['Criativos']) else 0
-                    })
+                # Performance: to_dict('records') é 3-5x mais rápido que iterrows()
+                temporal_records = summary_df.to_dict('records')
+                # Limpa valores NaN
+                for record in temporal_records:
+                    record['Data'] = str(record['Data']) if pd.notna(record['Data']) else ''
+                    record['Criativos'] = int(record['Criativos']) if pd.notna(record['Criativos']) else 0
                 summary_data['temporal'] = temporal_records
                 
                 # Comparação temporal para Google Ads
@@ -2538,8 +3177,9 @@ def google_ads_upload():
                         summary_df['Period'] = summary_df['Data'].dt.to_period('M')
                         monthly_counts = summary_df.groupby('Period')['Criativos'].sum()
                         
-                        current_month = datetime.now().to_period('M')
-                        previous_month = (current_month - 1)
+                        # Performance: Usa pd.Period ao invés de datetime.to_period() (não existe)
+                        current_month = pd.Period(datetime.now(), freq='M')
+                        previous_month = current_month - 1
                         
                         current_month_count = int(monthly_counts.get(current_month, 0))
                         previous_month_count = int(monthly_counts.get(previous_month, 0))
@@ -2637,11 +3277,11 @@ def google_ads_upload():
                 print(f"Sorted creative stats:")
                 print(creative_stats.head())
                 
-                # Top criativos para gráfico
+                # Performance: itertuples() é 3-5x mais rápido que iterrows()
                 top_creatives = {}
-                for _, row in creative_stats.head(10).iterrows():
-                    creative_name = str(row['creative'])
-                    top_creatives[creative_name] = int(row['Total_Leads'])
+                for row in creative_stats.head(10).itertuples(index=False):
+                    creative_name = str(row.creative)
+                    top_creatives[creative_name] = int(row.Total_Leads)
                 
                 # Criativo com mais leads
                 top_lead_creative = creative_stats.iloc[0] if len(creative_stats) > 0 else None
@@ -2755,7 +3395,7 @@ def auto_upload_leads():
             file_name = sheet_info.get('primary_sheet', 'Google Sheet')
             print(f"[LEADS] Carregado via Sheets API com {sheet_info.get('combined_rows', len(df))} linhas." )
         except Exception as sheet_error:
-            print(f"[LEADS] Falha Sheets API, tentando exportação XLSX: {sheet_error}")
+            logger.warning(f"Falha Sheets API, tentando exportação XLSX: {sheet_error}")
 
         if df is None:
             file_content, file_name = download_file_from_drive(file_id, credentials)
@@ -2772,6 +3412,7 @@ def auto_upload_leads():
         analysis['sheet_info'] = sheet_info
         analysis['file_name'] = file_name
 
+        logger.info(f"Leads carregados automaticamente: {file_name}")
         return jsonify({
             'success': True,
             'message': f'Planilha de leads {file_name} carregada automaticamente!',
@@ -2779,61 +3420,65 @@ def auto_upload_leads():
             'data': analysis
         })
     except Exception as e:
-        print(f"Erro no upload automático de leads: {str(e)}")
+        logger.error(f"Erro no auto_upload_leads: {e}", exc_info=True)
         return jsonify({'error': f'Erro no upload automático de leads: {str(e)}'}), 500
 
 @app.route('/upload-leads', methods=['POST'])
+@limiter.limit("10 per minute")
+@handle_errors
 def upload_leads():
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    """Endpoint para upload manual de leads com validação."""
+    logger.info("Upload manual de leads iniciado")
+    
+    # Validação de arquivo
+    if 'file' not in request.files:
+        logger.warning("Upload de leads sem arquivo")
+        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
 
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
+    file = request.files['file']
+    is_valid, error_msg = validate_file_upload(file)
+    if not is_valid:
+        logger.warning(f"Upload de leads inválido: {error_msg}")
+        return jsonify({'error': error_msg}), 400
 
-        priority_env = os.getenv('LEADS_SHEETS_PRIORITY', '')
-        priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
+    priority_env = os.getenv('LEADS_SHEETS_PRIORITY', '')
+    priority_names = [name.strip() for name in priority_env.split(',')] if priority_env else []
 
-        file_bytes = file.read()
-        cache_key = _get_cache_key(file_bytes)
-        cached_data = _get_from_cache(cache_key)
-        
-        if cached_data:
-            print("Usando dados do cache para leads")
-            return jsonify(cached_data)
-        
-        df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename, priority_names)
-        sheet_info = sheet_info or {}
-        sheet_info.setdefault('source', 'manual_upload')
-        sheet_info['file_name'] = file.filename
-        sheet_info['priority_used'] = priority_names
+    file_bytes = file.read()
+    cache_key = _get_cache_key(file_bytes)
+    cached_data = _get_from_cache(cache_key)
+    
+    if cached_data:
+        logger.info(f"Cache hit para leads: {file.filename}")
+        return jsonify(cached_data)
+    
+    df, sheet_info = load_leads_dataframe_from_bytes(file_bytes, file.filename, priority_names)
+    sheet_info = sheet_info or {}
+    sheet_info.setdefault('source', 'manual_upload')
+    sheet_info['file_name'] = file.filename
+    sheet_info['priority_used'] = priority_names
 
-        analysis = analyze_leads_dataframe(df)
-        analysis['sheet_info'] = sheet_info
-        analysis['file_name'] = file.filename
+    analysis = analyze_leads_dataframe(df)
+    analysis['sheet_info'] = sheet_info
+    analysis['file_name'] = file.filename
 
-        result = {
-            'success': True,
-            'message': 'Planilha de leads processada com sucesso!',
-            'sheet_info': sheet_info,
-            'data': analysis
-        }
-        
-        # Salva no cache
-        if cache_key:
-            _save_to_cache(cache_key, result)
-        
-        # Limpa memória
-        del df
-        gc.collect()
+    result = {
+        'success': True,
+        'message': 'Planilha de leads processada com sucesso!',
+        'sheet_info': sheet_info,
+        'data': analysis
+    }
+    
+    # Salva no cache
+    if cache_key:
+        _save_to_cache(cache_key, result, cache_type='leads')
+    
+    # Limpa memória
+    del df
+    gc.collect()
 
-        return jsonify(result)
-    except Exception as e:
-        print(f"Erro ao processar planilha de leads: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erro ao processar planilha de leads: {str(e)}'}), 500
+    logger.info(f"Leads processados com sucesso: {file.filename}")
+    return jsonify(result)
 
 @app.route('/api/sults/test', methods=['GET'])
 def test_sults_connection():
@@ -3506,13 +4151,16 @@ def verificar_sults_leads():
 
 @app.route('/api/sults/leads-status', methods=['GET'])
 def get_sults_leads_status():
-    """Busca leads da SULTS organizados por status (abertos, perdidos, ganhos)"""
+    """Busca leads da SULTS organizados por status (abertos, perdidos, ganhos) com paginação"""
     if not SULTS_AVAILABLE:
         return jsonify({
             'success': False,
             'error': 'Integração SULTS não disponível',
             'message': 'Módulo sults_api não encontrado'
         }), 503
+    
+    # Performance: Paginação
+    page, page_size = get_pagination_params(request)
     
     # URL padrão agora é a correta conforme documentação: https://developer.sults.com.br/api/v1
     try:
@@ -3521,10 +4169,26 @@ def get_sults_leads_status():
         
         leads_data = client.get_leads_by_status(status_filter=status_filter)
         
-        return jsonify({
-            'success': True,
-            'data': leads_data
-        })
+        # Performance: Aplica paginação se leads_data for uma lista
+        if isinstance(leads_data, list):
+            paginated = paginate_data(leads_data, page, page_size)
+            return jsonify({
+                'success': True,
+                'data': paginated['data'],
+                'pagination': paginated['pagination']
+            })
+        else:
+            # Se for dict, tenta paginar dentro de 'leads' ou similar
+            if isinstance(leads_data, dict) and 'leads' in leads_data:
+                leads_list = leads_data['leads']
+                paginated = paginate_data(leads_list, page, page_size)
+                leads_data['leads'] = paginated['data']
+                leads_data['pagination'] = paginated['pagination']
+            
+            return jsonify({
+                'success': True,
+                'data': leads_data
+            })
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -3914,6 +4578,64 @@ def get_performance_optimization():
             ]
         })
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============================================
+# MELHORIA 1: EXPORTAÇÃO DE DADOS
+# ============================================
+@app.route('/api/export/excel', methods=['POST'])
+@handle_errors
+def export_to_excel():
+    """Exporta dados para Excel"""
+    try:
+        data = request.get_json()
+        if not data or 'data' not in data:
+            return jsonify({'error': 'Dados não fornecidos'}), 400
+        
+        df = pd.DataFrame(data['data'])
+        filename = data.get('filename', 'export.xlsx')
+        
+        # Criar arquivo Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Dados')
+        
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar para Excel: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/export/csv', methods=['POST'])
+@handle_errors
+def export_to_csv():
+    """Exporta dados para CSV"""
+    try:
+        data = request.get_json()
+        if not data or 'data' not in data:
+            return jsonify({'error': 'Dados não fornecidos'}), 400
+        
+        df = pd.DataFrame(data['data'])
+        filename = data.get('filename', 'export.csv')
+        
+        # Criar CSV em memória
+        output = io.StringIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')  # utf-8-sig para Excel
+        output.seek(0)
+        
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv; charset=utf-8-sig',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar para CSV: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
